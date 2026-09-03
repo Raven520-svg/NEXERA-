@@ -1,4 +1,4 @@
-```python
+
 import os
 import re
 import sqlite3
@@ -511,4 +511,3 @@ if __name__ == "__main__":
         admin_page()
     else:
         st.write("Page not found.")
-```
