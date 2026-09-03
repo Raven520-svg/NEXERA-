@@ -213,10 +213,21 @@ def validate_nexera_text(text):
     return "nexera" in text.lower()
 
 # ============================================================
+# LOGO DISPLAY FUNCTION
+# ============================================================
+
+def show_logo():
+    if LOGO_PATH.exists():
+        st.image(str(LOGO_PATH), width=180)
+    else:
+        st.markdown("<h2 style='font-weight:900;'>NEXERA</h2>", unsafe_allow_html=True)
+
+# ============================================================
 # SIDEBAR NAVIGATION
 # ============================================================
 
 with st.sidebar:
+    show_logo()
     st.markdown("## NEXERA")
     menu_options = [
         "Home",
@@ -249,12 +260,6 @@ Account: **{OPAY_NAME}**
 # ============================================================
 # PAGES
 # ============================================================
-
-def show_logo():
-    if LOGO_PATH.exists():
-        st.image(str(LOGO_PATH), width=180)
-    else:
-        st.markdown("<h2 style='font-weight:900;'>NEXERA</h2>", unsafe_allow_html=True)
 
 def home_page():
     st.markdown(
@@ -484,20 +489,26 @@ def admin_page():
 # PAGE ROUTING
 # ============================================================
 
-show_logo()
+if __name__ == "__main__":
+    with st.sidebar:
+        show_logo()
+    if 'page' not in st.session_state:
+        st.session_state.page = "Home"
 
-if page == "Home":
-    home_page()
-elif page == "Contestants":
-    contestants_page()
-elif page == "Register":
-    registration_page()
-elif page == "About":
-    about_page()
-elif page == "Rules & FAQ":
-    rules_faq_page()
-elif page == "Admin":
-    admin_page()
-else:
-    st.write("Page not found.")
+    page = st.sidebar.radio("Navigation", ["Home", "Contestants", "Register", "About", "Rules & FAQ", "Admin"])
+
+    if page == "Home":
+        home_page()
+    elif page == "Contestants":
+        contestants_page()
+    elif page == "Register":
+        registration_page()
+    elif page == "About":
+        about_page()
+    elif page == "Rules & FAQ":
+        rules_faq_page()
+    elif page == "Admin":
+        admin_page()
+    else:
+        st.write("Page not found.")
 ```
