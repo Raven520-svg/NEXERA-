@@ -490,13 +490,7 @@ def admin_page():
 # ============================================================
 
 if __name__ == "__main__":
-    with st.sidebar:
-        show_logo()
-    if 'page' not in st.session_state:
-        st.session_state.page = "Home"
-
-    page = st.sidebar.radio("Navigation", ["Home", "Contestants", "Register", "About", "Rules & FAQ", "Admin"])
-
+    # The sidebar radio is already defined above and assigned to 'page'
     if page == "Home":
         home_page()
     elif page == "Contestants":
