@@ -62,53 +62,43 @@ def local_css():
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800;900&display=swap');
         html, body, [class*="st-"] {{ font-family: 'Poppins', sans-serif; }}
-       .main {{ background-color: {BG_GRAY}; }}
+      .main {{ background-color: {BG_GRAY}; }}
 
-       .whatsapp-banner {{
+      .whatsapp-banner {{
             background: linear-gradient(90deg, #25D366 0%, #128C7E 100%);
             color: white; padding: 1rem; text-align: center; font-weight: 700; font-size: 1.1rem;
             position: sticky; top: 0; z-index: 999; border-radius: 0 0 12px 12px; margin-bottom: 1rem;
         }}
-       .whatsapp-banner a {{ color: {NAVY}; text-decoration: none; background: {GOLD}; padding: 0.5rem 1.2rem; border-radius: 8px; margin-left: 1rem; font-weight: 900; }}
+      .whatsapp-banner a {{ color: {NAVY}; text-decoration: none; background: {GOLD}; padding: 0.5rem 1.2rem; border-radius: 8px; margin-left: 1rem; font-weight: 900; }}
 
-       .popup-overlay {{
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 10000; display: flex; align-items: center; justify-content: center;
-        }}
-       .popup-box {{
-            background: white; padding: 3rem; border-radius: 20px; max-width: 600px; text-align: center;
-            border-top: 8px solid {GREEN};
-        }}
-       .popup-title {{ font-size: 2rem; font-weight: 900; color: {NAVY}; margin-bottom: 1rem; }}
-
-       .hero {{
+      .hero {{
             background: linear-gradient(135deg, {NAVY} 0%, #1e3a8a 100%);
             padding: 5rem 2rem; border-radius: 16px; color: white; text-align: center; margin-bottom: 3rem;
         }}
-       .hero-title {{ font-size: 3.5rem; font-weight: 900; letter-spacing: 0.05em; color: {GOLD}; margin-bottom: 0.5rem; }}
-       .hero-tagline {{ font-size: 1.4rem; font-weight: 400; margin-bottom: 2rem; }}
+      .hero-title {{ font-size: 3.5rem; font-weight: 900; letter-spacing: 0.05em; color: {GOLD}; margin-bottom: 0.5rem; }}
+      .hero-tagline {{ font-size: 1.4rem; font-weight: 400; margin-bottom: 2rem; }}
 
-       .cta-button {{
+      .cta-button {{
             background-color: {GOLD}; color: {NAVY}; padding: 1rem 2.5rem; border-radius: 10px;
             font-weight: 800; font-size: 1.1rem; text-decoration: none; display: inline-block; margin: 0.5rem;
         }}
 
-       .section-title {{ color: {NAVY}; font-size: 2.2rem; font-weight: 800; margin-top: 3rem; margin-bottom: 1.5rem; }}
+      .section-title {{ color: {NAVY}; font-size: 2.2rem; font-weight: 800; margin-top: 3rem; margin-bottom: 1.5rem; }}
 
-       .stat-box {{
+      .stat-box {{
             background-color: white; padding: 2rem; border-radius: 12px; text-align: center;
             border-top: 5px solid {GOLD}; box-shadow: 0 4px 12px rgba(0,0,0,0.06);
         }}
-       .stat-number {{ font-size: 2.5rem; font-weight: 900; color: {NAVY}; }}
-       .stat-label {{ font-size: 1rem; color: #64748b; font-weight: 600; }}
+      .stat-number {{ font-size: 2.5rem; font-weight: 900; color: {NAVY}; }}
+      .stat-label {{ font-size: 1rem; color: #64748b; font-weight: 600; }}
 
-       .why-card {{
+      .why-card {{
             background: white; padding: 2rem; border-radius: 12px; border-left: 6px solid {GOLD};
             height: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         }}
 
-       .admin-stats {{ display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }}
-       .candidate-card {{ background: white; padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem; border: 1px solid #e2e8f0; }}
+      .admin-stats {{ display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }}
+      .candidate-card {{ background: white; padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem; border: 1px solid #e2e8f0; }}
 
         footer {{ text-align: center; margin-top: 4rem; padding: 2rem; background: {NAVY}; color: white; border-radius: 12px; }}
         </style>
@@ -118,21 +108,14 @@ def local_css():
 local_css()
 
 # === FORCED POPUP FUNCTION ===
+@st.dialog("📢 MUST FOLLOW FIRST")
 def show_whatsapp_gate():
-    if not st.session_state.whatsapp_confirmed:
-        st.markdown('<div class="popup-overlay">', unsafe_allow_html=True)
-        with st.container():
-            st.markdown('<div class="popup-box">', unsafe_allow_html=True)
-            st.markdown('<h2 class="popup-title">📢 MUST FOLLOW FIRST</h2>', unsafe_allow_html=True)
-            st.write("To ensure you get all NEXERA updates, results, and announcements, you MUST follow our official WhatsApp Channel.")
-            st.markdown(f'<a href="{WHATSAPP_CHANNEL}" target="_blank" style="background:{GREEN}; color:white; padding:1rem 2rem; border-radius:10px; font-weight:800; text-decoration:none; font-size:1.2rem;">Follow NEXERA Channel</a>', unsafe_allow_html=True)
-            st.write("")
-            if st.button("✅ I HAVE FOLLOWED THE CHANNEL", use_container_width=True, type="primary"):
-                st.session_state.whatsapp_confirmed = True
-                st.rerun()
-            st.caption("You will not be able to register or vote without following.")
-            st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.write("To ensure you get all NEXERA updates, results, and announcements, you MUST follow our official WhatsApp Channel.")
+    st.link_button("Follow NEXERA Channel", WHATSAPP_CHANNEL, use_container_width=True, type="primary")
+    if st.button("✅ I HAVE FOLLOWED THE CHANNEL", use_container_width=True):
+        st.session_state.whatsapp_confirmed = True
+        st.rerun()
+    st.caption("You will not be able to register or vote without following.")
 
 # Show banner
 st.markdown(f'''
@@ -142,7 +125,8 @@ st.markdown(f'''
 </div>
 ''', unsafe_allow_html=True)
 
-show_whatsapp_gate()
+if not st.session_state.whatsapp_confirmed:
+    show_whatsapp_gate()
 
 # === DATABASE ===
 def get_connection():
@@ -152,8 +136,32 @@ def get_connection():
 
 def init_db():
     conn = get_connection()
-    conn.execute("""CREATE TABLE IF NOT EXISTS voters (id INTEGER PRIMARY KEY AUTOINCREMENT, full_name TEXT NOT NULL, phone TEXT UNIQUE NOT NULL, email TEXT, state TEXT, lga TEXT, status TEXT DEFAULT 'active', created_at TEXT NOT NULL)""")
-    conn.execute("""CREATE TABLE IF NOT EXISTS candidates (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE NOT NULL, slug TEXT UNIQUE NOT NULL, full_name TEXT NOT NULL, talent_category TEXT NOT NULL, phone TEXT NOT NULL, email TEXT NOT NULL, state TEXT, lga TEXT, bio TEXT NOT NULL, why_money TEXT NOT NULL, image_path TEXT, votes INTEGER DEFAULT 0, status TEXT DEFAULT 'pending', rejection_reason TEXT, created_at TEXT NOT NULL)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS voters (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        full_name TEXT NOT NULL,
+        phone TEXT UNIQUE NOT NULL,
+        email TEXT,
+        state TEXT,
+        lga TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT NOT NULL)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS candidates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT UNIQUE NOT NULL,
+        slug TEXT UNIQUE NOT NULL,
+        full_name TEXT NOT NULL,
+        talent_category TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        email TEXT NOT NULL,
+        state TEXT,
+        lga TEXT,
+        bio TEXT NOT NULL,
+        why_money TEXT NOT NULL,
+        image_path TEXT,
+        votes INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'pending',
+        rejection_reason TEXT,
+        created_at TEXT NOT NULL)""")
     conn.commit()
     conn.close()
 
@@ -211,7 +219,7 @@ def export_csv(query, filename):
     conn.close()
     st.download_button("Download CSV", df.to_csv(index=False).encode('utf-8'), filename, "text/csv")
 
-# === PAGES ===
+# === PAGES - HALF 1 ===
 def home_page():
     st.markdown(f'<div class="hero"><h1 class="hero-title">{APP_NAME}</h1><p class="hero-tagline">{TAGLINE}</p>', unsafe_allow_html=True)
     st.markdown(f'<a href="{WHATSAPP_CHANNEL}" target="_blank" class="cta-button">📢 Follow WhatsApp Channel</a>', unsafe_allow_html=True)
@@ -235,7 +243,7 @@ def home_page():
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<h2 class="section-title">About NEXERA</h2>', unsafe_allow_html=True)
-    st.write("NEXERA is a next-generation civic platform built to strengthen democracy through technology and transparency. We provide a secure, accessible system for voter registration, candidate management, and election monitoring. Our mission is to give every citizen a voice while ensuring institutions have the tools to run fair, credible, and accountable elections.")
+    st.write("NEXERA is a next-generation civic platform built to strengthen democracy through technology and transparency. We provide a secure, accessible system for voter registration, candidate management, and election monitoring.")
 
     st.markdown('<h2 class="section-title">What’s At Stake</h2>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
@@ -252,7 +260,7 @@ def home_page():
 def voter_registration_page():
     if not st.session_state.whatsapp_confirmed:
         st.warning("⚠️ Please follow the WhatsApp channel first to continue.")
-        return
+        st.stop()
 
     st.markdown('<h2 class="section-title">Voter Registration</h2>', unsafe_allow_html=True)
     status = registration_status()
@@ -280,11 +288,10 @@ def voter_registration_page():
             st.success(f"✅ Registration successful! Welcome {full_name}. You can now vote when it opens.")
         except sqlite3.IntegrityError:
             st.error("This phone number is already registered.")
-
 def contestants_page():
     if not st.session_state.whatsapp_confirmed:
         st.warning("⚠️ Please follow the WhatsApp channel first to view contestants.")
-        return
+        st.stop()
 
     st.markdown('<h2 class="section-title">NEXERA Contestants</h2>', unsafe_allow_html=True)
     conn = get_connection()
@@ -323,7 +330,7 @@ def contestants_page():
 def candidate_registration_page():
     if not st.session_state.whatsapp_confirmed:
         st.warning("⚠️ Please follow the WhatsApp channel first to continue.")
-        return
+        st.stop()
 
     st.markdown('<h2 class="section-title">Apply as Candidate</h2>', unsafe_allow_html=True)
     status = registration_status()
@@ -369,7 +376,6 @@ def admin_page():
     total = conn.execute("SELECT COUNT(*) FROM candidates").fetchone()[0]
     approved = conn.execute("SELECT COUNT(*) FROM candidates WHERE status = 'approved'").fetchone()[0]
     pending = conn.execute("SELECT COUNT(*) FROM candidates WHERE status = 'pending'").fetchone()[0]
-    rejected = conn.execute("SELECT COUNT(*) FROM candidates WHERE status = 'rejected'").fetchone()[0]
     total_votes = conn.execute("SELECT SUM(votes) FROM candidates").fetchone()[0] or 0
 
     st.markdown('<div class="admin-stats">', unsafe_allow_html=True)
@@ -398,7 +404,7 @@ def admin_page():
                     reason = st.text_input("Rejection reason", key=f"reason{c['id']}")
                     if colB.button("❌ Reject", key=f"r{c['id']}"):
                         conn.execute("UPDATE candidates SET status='rejected', rejection_reason=? WHERE id=?", (reason, c['id'])); conn.commit(); st.rerun()
-    
+
     with tab2:
         st.subheader("Voter Management")
         voters = conn.execute("SELECT * FROM voters ORDER BY created_at DESC").fetchall()
@@ -410,7 +416,7 @@ def admin_page():
         st.subheader("Analytics")
         df_state = pd.read_sql_query("SELECT state, COUNT(*) as count FROM voters GROUP BY state", conn)
         df_category = pd.read_sql_query("SELECT talent_category, COUNT(*) as count FROM candidates GROUP BY talent_category", conn)
-        
+
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("**Voters by State**")
@@ -426,7 +432,6 @@ def admin_page():
         st.write("Download all data as CSV")
         export_csv("SELECT * FROM voters", "nexera_voters.csv")
         export_csv("SELECT * FROM candidates", "nexera_candidates.csv")
-        export_csv("SELECT * FROM votes", "nexera_votes.csv")
     conn.close()
 
 def contact_support_page():
