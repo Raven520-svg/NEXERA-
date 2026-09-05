@@ -1,479 +1,355 @@
 import streamlit as st
-from datetime import datetime
-import sqlite3
-import re
-import random
 import pandas as pd
-from pathlib import Path
-from PIL import Image
+import sqlite3
+import os
+import plotly.express as px
+from datetime import datetime
 
-# === CONFIGURATION ===
-APP_NAME = "NEXERA"
-TAGLINE = "Empowering Transparent Elections"
-WHATSAPP_CHANNEL = "https://whatsapp.com/channel/0029VbDJzRsGpLHMGlw2at0n"
-
-# BRAND COLORS
-NAVY = "#0A1F44"
-GOLD = "#D4AF37"
-GREEN = "#25D366"
-RED = "#DC2626"
-BG_GRAY = "#F8FAFC"
-
-SUPPORT_EMAIL = "nexerasupport142@gmail.com"
-SUPPORT_PHONE = "09018479293"
-
+# ===== CONFIG =====
+DB_NAME = "nexera.db"
+UPLOAD_FOLDER = "uploads"
+ADMIN_PASSWORD = "nexera2026" # CHANGE THIS
+CHANNEL_LINK = "https://www.instagram.com/nexera.ng" # CHANGE THIS
 VOTE_PRICE = 200
-OPAY_ACCOUNT = "9018479293"
-OPAY_NAME = "Nexera"
+PRIZE_POOL = 200000
 
-PRIZES = {
-    "1st Place": "₦120,000 + Business Grant",
-    "2nd Place": "₦50,000 + Mentorship",
-    "3rd Place": "₦30,000 + Equipment"
-}
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+st.set_page_config(page_title="NEXERA - Step Into Your Next Era", layout="wide", initial_sidebar_state="expanded")
 
-REGISTRATION_START = datetime(2026, 9, 1, 0, 0, 0)
-VOTING_START = datetime(2026, 10, 1, 0, 0, 0)
-VOTING_END = datetime(2026, 11, 1, 23, 59, 0)
+# BLACK THEME + STANDARD NAV
+st.markdown("""
+<style>
+   .stApp { background-color: #000; color: #FFFFFF; }
+    h1, h2, h3, h4, h5, h6 { color: #FFD700!important; }
+   .stButton>button { background-color: #FFD700; color: #000; font-weight: 700; border-radius: 8px; }
+   .stMetric { background-color: #1a1a1a; padding: 15px; border-radius: 10px; }
+    [data-testid="stSidebar"] {background-color: #111;}
+</style>
+""", unsafe_allow_html=True)
 
-ADMIN_PASSWORD = "RavenNexera2026!"
+# ===== DATABASE =====
+conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+c = conn.cursor()
 
-BASE_DIR = Path(__file__).parent
-DB_PATH = BASE_DIR / "nexera.db"
-UPLOAD_DIR = BASE_DIR / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
+c.execute('''CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, voting_enabled INTEGER)''')
+c.execute('''CREATE TABLE IF NOT EXISTS candidates
+             (id INTEGER PRIMARY KEY, code TEXT UNIQUE, name TEXT, photo TEXT, reason TEXT,
+              location TEXT, votes INTEGER, status TEXT, created_at TEXT)''')
+c.execute('''CREATE TABLE IF NOT EXISTS submissions
+             (id INTEGER PRIMARY KEY, name TEXT, talent TEXT, phone TEXT, bank TEXT,
+              photo TEXT, reason TEXT, location TEXT, status TEXT, created_at TEXT)''')
 
-# === SESSION STATE FOR POPUP GATE ===
-if "whatsapp_confirmed" not in st.session_state:
-    st.session_state.whatsapp_confirmed = False
-
-# === PAGE CONFIG ===
-st.set_page_config(
-    page_title=f"{APP_NAME} — {TAGLINE}",
-    page_icon="🗳️",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# === CSS STYLES ===
-def local_css():
-    st.markdown(
-        f"""
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800;900&display=swap');
-        html, body, [class*="st-"] {{ font-family: 'Poppins', sans-serif; }}
-      .main {{ background-color: {BG_GRAY}; }}
-
-      .whatsapp-banner {{
-            background: linear-gradient(90deg, #25D366 0%, #128C7E 100%);
-            color: white; padding: 1rem; text-align: center; font-weight: 700; font-size: 1.1rem;
-            position: sticky; top: 0; z-index: 999; border-radius: 0 0 12px 12px; margin-bottom: 1rem;
-        }}
-      .whatsapp-banner a {{ color: {NAVY}; text-decoration: none; background: {GOLD}; padding: 0.5rem 1.2rem; border-radius: 8px; margin-left: 1rem; font-weight: 900; }}
-
-      .hero {{
-            background: linear-gradient(135deg, {NAVY} 0%, #1e3a8a 100%);
-            padding: 5rem 2rem; border-radius: 16px; color: white; text-align: center; margin-bottom: 3rem;
-        }}
-      .hero-title {{ font-size: 3.5rem; font-weight: 900; letter-spacing: 0.05em; color: {GOLD}; margin-bottom: 0.5rem; }}
-      .hero-tagline {{ font-size: 1.4rem; font-weight: 400; margin-bottom: 2rem; }}
-
-      .cta-button {{
-            background-color: {GOLD}; color: {NAVY}; padding: 1rem 2.5rem; border-radius: 10px;
-            font-weight: 800; font-size: 1.1rem; text-decoration: none; display: inline-block; margin: 0.5rem;
-        }}
-
-      .section-title {{ color: {NAVY}; font-size: 2.2rem; font-weight: 800; margin-top: 3rem; margin-bottom: 1.5rem; }}
-
-      .stat-box {{
-            background-color: white; padding: 2rem; border-radius: 12px; text-align: center;
-            border-top: 5px solid {GOLD}; box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-        }}
-      .stat-number {{ font-size: 2.5rem; font-weight: 900; color: {NAVY}; }}
-      .stat-label {{ font-size: 1rem; color: #64748b; font-weight: 600; }}
-
-      .why-card {{
-            background: white; padding: 2rem; border-radius: 12px; border-left: 6px solid {GOLD};
-            height: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        }}
-
-      .admin-stats {{ display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }}
-      .candidate-card {{ background: white; padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem; border: 1px solid #e2e8f0; }}
-
-        footer {{ text-align: center; margin-top: 4rem; padding: 2rem; background: {NAVY}; color: white; border-radius: 12px; }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-local_css()
-
-# === FORCED POPUP FUNCTION ===
-@st.dialog("📢 MUST FOLLOW FIRST")
-def show_whatsapp_gate():
-    st.write("To ensure you get all NEXERA updates, results, and announcements, you MUST follow our official WhatsApp Channel.")
-    st.link_button("Follow NEXERA Channel", WHATSAPP_CHANNEL, use_container_width=True, type="primary")
-    if st.button("✅ I HAVE FOLLOWED THE CHANNEL", use_container_width=True):
-        st.session_state.whatsapp_confirmed = True
-        st.rerun()
-    st.caption("You will not be able to register or vote without following.")
-
-# Show banner
-st.markdown(f'''
-<div class="whatsapp-banner">
-📢 MUST FOLLOW: Get live updates and results
-<a href="{WHATSAPP_CHANNEL}" target="_blank">Follow Channel</a>
-</div>
-''', unsafe_allow_html=True)
-
-if not st.session_state.whatsapp_confirmed:
-    show_whatsapp_gate()
-
-# === DATABASE ===
-def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    conn = get_connection()
-    conn.execute("""CREATE TABLE IF NOT EXISTS voters (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        full_name TEXT NOT NULL,
-        phone TEXT UNIQUE NOT NULL,
-        email TEXT,
-        state TEXT,
-        lga TEXT,
-        status TEXT DEFAULT 'active',
-        created_at TEXT NOT NULL)""")
-    conn.execute("""CREATE TABLE IF NOT EXISTS candidates (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        code TEXT UNIQUE NOT NULL,
-        slug TEXT UNIQUE NOT NULL,
-        full_name TEXT NOT NULL,
-        talent_category TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        email TEXT NOT NULL,
-        state TEXT,
-        lga TEXT,
-        bio TEXT NOT NULL,
-        why_money TEXT NOT NULL,
-        image_path TEXT,
-        votes INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'pending',
-        rejection_reason TEXT,
-        created_at TEXT NOT NULL)""")
+if c.execute("SELECT * FROM settings").fetchone() is None:
+    c.execute("INSERT INTO settings (voting_enabled) VALUES (1)")
     conn.commit()
-    conn.close()
 
-init_db()
+# ===== FUNCTIONS =====
+def get_settings(): return c.execute("SELECT * FROM settings WHERE id=1").fetchone()
+def toggle_voting():
+    current = get_settings()[1]
+    c.execute("UPDATE settings SET voting_enabled=? WHERE id=1", (0 if current else 1,)); conn.commit()
+def get_candidates(status='approved'): return pd.read_sql_query(f"SELECT * FROM candidates WHERE status='{status}' ORDER BY votes DESC", conn)
+def get_all_candidates(): return pd.read_sql_query("SELECT * FROM candidates ORDER BY created_at DESC", conn)
+def get_submissions(): return pd.read_sql_query("SELECT * FROM submissions WHERE status='pending' ORDER BY created_at DESC", conn)
 
-# === HELPERS ===
-def slugify(text):
-    text = text.lower().strip()
-    text = re.sub(r"[^a-z0-9]+", "-", text)
-    return text.strip("-")
+# ===== SIDEBAR NAV =====
+st.sidebar.image("https://placehold.co/200x60/FFD700/000?text=NEXERA", use_column_width=True) # Replace with logo
+page = st.sidebar.radio("Navigation", ["🏠 Home", "📝 Submit", "ℹ️ About", "🔒 Admin"])
+st.sidebar.markdown("---")
+st.sidebar.info("Every ₦200 vote goes directly to contestants")
 
-def generate_code():
-    conn = get_connection()
-    while True:
-        code = str(random.randint(1000, 9999))
-        exists = conn.execute("SELECT id FROM candidates WHERE code =?", (code,)).fetchone()
-        if not exists:
-            conn.close()
-            return code
+# ===== PAGE: HOME =====
+if page == "🏠 Home":
+    st.title("STEP INTO YOUR NEXT ERA")
+    settings = get_settings()
+    voting_enabled = settings[1] == 1
+    candidates = get_candidates()
 
-def unique_slug(name, code):
-    base = slugify(name)
-    if not base: base = "contestant"
-    return f"{base}-{code}"
+    # STATS BAR + GRAPH DATA
+    total_votes = candidates['votes'].sum() if not candidates.empty else 0
+    total_raised = total_votes * VOTE_PRICE
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Candidates", len(candidates))
+    col2.metric("Total Votes", f"{total_votes:,}")
+    col3.metric("Total Raised", f"₦{total_raised:,}")
+    col4.metric("Prize Pool", f"₦{PRIZE_POOL:,}")
 
-def save_uploaded_image(uploaded_file, code):
-    if uploaded_file is None: return None
-    try:
-        image = Image.open(uploaded_file).convert("RGB")
-        image = image.resize((800, 800))
-        filename = f"{code}.jpg"
-        destination = UPLOAD_DIR / filename
-        image.save(destination, "JPEG", quality=90)
-        return str(destination)
-    except Exception: return None
+    if not voting_enabled: st.error("⚠️ Voting is currently OFF")
+    st.divider()
 
-def image_exists(path): return bool(path) and Path(path).exists()
-def validate_nexera_text(text): return "nexera" in text.lower()
-
-def registration_status():
-    now = datetime.now()
-    if now < REGISTRATION_START: return "upcoming"
-    if now >= VOTING_START: return "closed"
-    return "active"
-
-def voting_status():
-    now = datetime.now()
-    if now < VOTING_START: return "upcoming"
-    if now > VOTING_END: return "ended"
-    return "active"
-
-def export_csv(query, filename):
-    conn = get_connection()
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-    st.download_button("Download CSV", df.to_csv(index=False).encode('utf-8'), filename, "text/csv")
-
-# === PAGES - HALF 1 ===
-def home_page():
-    st.markdown(f'<div class="hero"><h1 class="hero-title">{APP_NAME}</h1><p class="hero-tagline">{TAGLINE}</p>', unsafe_allow_html=True)
-    st.markdown(f'<a href="{WHATSAPP_CHANNEL}" target="_blank" class="cta-button">📢 Follow WhatsApp Channel</a>', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    with c1: st.markdown('<a href="#register" class="cta-button">Register to Vote</a>', unsafe_allow_html=True)
-    with c2: st.markdown('<a href="#contestants" class="cta-button">View Candidates</a>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    conn = get_connection()
-    total_voters = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
-    approved = conn.execute("SELECT COUNT(*) FROM candidates WHERE status = 'approved'").fetchone()[0]
-    pending = conn.execute("SELECT COUNT(*) FROM candidates WHERE status = 'pending'").fetchone()[0]
-    total_votes = conn.execute("SELECT SUM(votes) FROM candidates").fetchone()[0] or 0
-    conn.close()
-
-    st.markdown('<div class="admin-stats">', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-box"><div class="stat-number">{total_voters}</div><div class="stat-label">Registered Voters</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-box"><div class="stat-number">{approved}</div><div class="stat-label">Approved Candidates</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-box"><div class="stat-number">{total_votes}</div><div class="stat-label">Total Votes Cast</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-box"><div class="stat-number">{pending}</div><div class="stat-label">Pending Applications</div></div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown('<h2 class="section-title">About NEXERA</h2>', unsafe_allow_html=True)
-    st.write("NEXERA is a next-generation civic platform built to strengthen democracy through technology and transparency. We provide a secure, accessible system for voter registration, candidate management, and election monitoring.")
-
-    st.markdown('<h2 class="section-title">What’s At Stake</h2>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    with c1: st.markdown('<div class="why-card"><h4>🗳️ Your Voice</h4><p>Decide leadership, policies, and the future of your community. Every vote counts.</p></div>', unsafe_allow_html=True)
-    with c2: st.markdown('<div class="why-card"><h4>📈 Real Impact</h4><p>Elect leaders who deliver on jobs, security, education, health, and infrastructure.</p></div>', unsafe_allow_html=True)
-    with c3: st.markdown('<div class="why-card"><h4>🔍 Full Transparency</h4><p>Track registrations and results live. No more doubts, no more fraud.</p></div>', unsafe_allow_html=True)
-
-    st.markdown('<h2 class="section-title">Prize Fund & Rewards</h2>', unsafe_allow_html=True)
-    p1, p2, p3 = st.columns(3)
-    p1.metric("1st Place", PRIZES["1st Place"])
-    p2.metric("2nd Place", PRIZES["2nd Place"])
-    p3.metric("3rd Place", PRIZES["3rd Place"])
-
-def voter_registration_page():
-    if not st.session_state.whatsapp_confirmed:
-        st.warning("⚠️ Please follow the WhatsApp channel first to continue.")
-        st.stop()
-
-    st.markdown('<h2 class="section-title">Voter Registration</h2>', unsafe_allow_html=True)
-    status = registration_status()
-    if status!= "active":
-        st.warning("Voter registration is currently closed.") if status=="closed" else st.info("Voter registration opens Sept 1, 2026.")
-        return
-
-    with st.form("voter_form"):
-        full_name = st.text_input("Full Name *")
-        phone = st.text_input("Phone Number *")
-        email = st.text_input("Email Address")
-        state = st.text_input("State *")
-        lga = st.text_input("LGA *")
-        submitted = st.form_submit_button("REGISTER AS VOTER", use_container_width=True)
-
-    if submitted:
-        if not all([full_name, phone, state, lga]):
-            st.error("Please fill all required fields.")
-            return
-        try:
-            conn = get_connection()
-            conn.execute("INSERT INTO voters (full_name, phone, email, state, lga, created_at) VALUES (?,?,?,?,?,?)",
-                         (full_name, phone, email, state, lga, datetime.now().isoformat()))
-            conn.commit(); conn.close()
-            st.success(f"✅ Registration successful! Welcome {full_name}. You can now vote when it opens.")
-        except sqlite3.IntegrityError:
-            st.error("This phone number is already registered.")
-def contestants_page():
-    if not st.session_state.whatsapp_confirmed:
-        st.warning("⚠️ Please follow the WhatsApp channel first to view contestants.")
-        st.stop()
-
-    st.markdown('<h2 class="section-title">NEXERA Contestants</h2>', unsafe_allow_html=True)
-    conn = get_connection()
-    search = st.text_input("Search contestant", placeholder="Name, code or category...")
-    query = "SELECT * FROM candidates WHERE status = 'approved'"
-    params = []
-    if search:
-        like = f"%{search}%"
-        query += " AND (full_name LIKE? OR code LIKE? OR talent_category LIKE?)"
-        params = [like, like, like]
-    query += " ORDER BY votes DESC, created_at ASC"
-    candidates = conn.execute(query, params).fetchall()
-    conn.close()
-
-    voting_active = voting_status() == "active"
-    if not candidates: st.info("No approved contestants yet.")
-
-    for i in range(0, len(candidates), 2):
-        cols = st.columns(2)
-        for j, col in enumerate(cols):
-            if i+j >= len(candidates): continue
-            c = candidates[i+j]
-            with col:
-                st.markdown(f'<div class="candidate-card">', unsafe_allow_html=True)
-                st.markdown(f"### #{i+j+1} — NEXERA {c['code']}")
-                if image_exists(c["image_path"]): st.image(c["image_path"], use_container_width=True)
-                st.subheader(c["full_name"])
-                st.write(f"**Category:** {c['talent_category']} | **Location:** {c['state']}")
-                st.markdown(f"### {c['votes']:,} VERIFIED VOTES")
-                st.write(f"**Bio:** {c['bio']}")
-                st.write(f"**Why they need support:** {c['why_money']}")
-                if voting_active:
-                    st.success(f"Support with ₦{VOTE_PRICE}/vote → {OPAY_ACCOUNT} ({OPAY_NAME})")
-                st.markdown('</div>', unsafe_allow_html=True)
-
-def candidate_registration_page():
-    if not st.session_state.whatsapp_confirmed:
-        st.warning("⚠️ Please follow the WhatsApp channel first to continue.")
-        st.stop()
-
-    st.markdown('<h2 class="section-title">Apply as Candidate</h2>', unsafe_allow_html=True)
-    status = registration_status()
-    if status!= "active":
-        st.warning("Candidate registration is currently closed.") if status=="closed" else st.info("Registration opens Sept 1, 2026.")
-        return
-
-    with st.form("candidate_form"):
-        full_name = st.text_input("Full Name *")
-        phone = st.text_input("Phone Number *")
-        email = st.text_input("Email Address *")
-        category = st.selectbox("Category *", ["Influencer", "Modeling", "Content Creator", "SME", "Tech", "Art"])
-        state = st.text_input("State *")
-        lga = st.text_input("LGA *")
-        photo = st.file_uploader("Upload Clear Photo *", type=["jpg", "jpeg", "png"])
-        bio = st.text_area("Tell us what you do *", height=120)
-        why_money = st.text_area("Why do you need the money? * Must include 'NEXERA'", height=150)
-        submitted = st.form_submit_button("SUBMIT APPLICATION", use_container_width=True)
-
-    if submitted:
-        errors = []
-        if not all([full_name, phone, email, category, state, lga, photo, bio, why_money]): errors.append("Please fill all required fields.")
-        if not validate_nexera_text(why_money): errors.append("INVALID: Your write-up must contain the word NEXERA.")
-        if errors: [st.error(e) for e in errors]
-        else:
-            code = generate_code(); slug = unique_slug(full_name, code); image_path = save_uploaded_image(photo, code)
-            conn = get_connection()
-            conn.execute("INSERT INTO candidates (code, slug, full_name, talent_category, phone, email, state, lga, bio, why_money, image_path, created_at) VALUES (?,?,?,?,?,?,?,?)",
-                         (code, slug, full_name, category, phone, email, state, lga, bio, why_money, image_path, datetime.now().isoformat()))
-            conn.commit(); conn.close()
-            st.success(f"Application submitted! Your code: NEXERA {code}. Awaiting admin approval.")
-
-def admin_page():
-    st.markdown('<h2 class="section-title">Admin Dashboard</h2>', unsafe_allow_html=True)
-    password = st.text_input("Enter admin password", type="password")
-    if password!= ADMIN_PASSWORD:
-        if password: st.error("Incorrect password.")
-        return
-
-    st.success("Access granted.")
-    conn = get_connection()
-    total_voters = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
-    total = conn.execute("SELECT COUNT(*) FROM candidates").fetchone()[0]
-    approved = conn.execute("SELECT COUNT(*) FROM candidates WHERE status = 'approved'").fetchone()[0]
-    pending = conn.execute("SELECT COUNT(*) FROM candidates WHERE status = 'pending'").fetchone()[0]
-    total_votes = conn.execute("SELECT SUM(votes) FROM candidates").fetchone()[0] or 0
-
-    st.markdown('<div class="admin-stats">', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-box"><div class="stat-number">{total_voters}</div><div class="stat-label">Total Voters</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-box"><div class="stat-number">{total}</div><div class="stat-label">Total Candidates</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-box"><div class="stat-number">{approved}</div><div class="stat-label">Approved</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-box"><div class="stat-number">{pending}</div><div class="stat-label">Pending</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-box"><div class="stat-number">{total_votes}</div><div class="stat-label">Total Votes</div></div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    tab1, tab2, tab3, tab4 = st.tabs(["Candidate Management", "Voter Management", "Analytics", "Exports"])
-
-    with tab1:
-        st.subheader("All Candidates")
-        candidates = conn.execute("SELECT * FROM candidates ORDER BY created_at DESC").fetchall()
-        for c in candidates:
-            with st.expander(f"{c['full_name']} - NEXERA {c['code']} - Status: {c['status'].upper()}"):
-                st.write(f"**Category:** {c['talent_category']} | **Votes:** {c['votes']} | **Location:** {c['state']}, {c['lga']}")
-                st.write(f"**Bio:** {c['bio']}")
-                st.write(f"**Why:** {c['why_money']}")
-                if image_exists(c["image_path"]): st.image(c["image_path"], width=200)
-                if c['status'] == 'pending':
-                    colA, colB = st.columns(2)
-                    if colA.button("✅ Accept", key=f"a{c['id']}"):
-                        conn.execute("UPDATE candidates SET status='approved' WHERE id=?", (c['id'],)); conn.commit(); st.rerun()
-                    reason = st.text_input("Rejection reason", key=f"reason{c['id']}")
-                    if colB.button("❌ Reject", key=f"r{c['id']}"):
-                        conn.execute("UPDATE candidates SET status='rejected', rejection_reason=? WHERE id=?", (reason, c['id'])); conn.commit(); st.rerun()
-
-    with tab2:
-        st.subheader("Voter Management")
-        voters = conn.execute("SELECT * FROM voters ORDER BY created_at DESC").fetchall()
-        st.write(f"Total Voters: {len(voters)}")
-        for v in voters:
-            st.write(f"{v['full_name']} | {v['phone']} | {v['state']} | {v['lga']} | {v['status']}")
-
-    with tab3:
-        st.subheader("Analytics")
-        df_state = pd.read_sql_query("SELECT state, COUNT(*) as count FROM voters GROUP BY state", conn)
-        df_category = pd.read_sql_query("SELECT talent_category, COUNT(*) as count FROM candidates GROUP BY talent_category", conn)
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**Voters by State**")
-            if not df_state.empty: st.bar_chart(df_state.set_index('state'))
-            else: st.info("No voter data yet")
-        with col2:
-            st.markdown("**Candidates by Category**")
-            if not df_category.empty: st.bar_chart(df_category.set_index('talent_category'))
-            else: st.info("No candidate data yet")
-
-    with tab4:
-        st.subheader("Export Data")
-        st.write("Download all data as CSV")
-        export_csv("SELECT * FROM voters", "nexera_voters.csv")
-        export_csv("SELECT * FROM candidates", "nexera_candidates.csv")
-    conn.close()
-
-def contact_support_page():
-    st.markdown('<h2 class="section-title">Contact Support</h2>', unsafe_allow_html=True)
-    st.write("Need help with registration, voting, or your application?")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.info(f"📧 Email: {SUPPORT_EMAIL}")
-        st.info(f"📱 WhatsApp: {SUPPORT_PHONE}")
-        st.markdown(f"### 📢 Official Channel\n[Follow NEXERA on WhatsApp]({WHATSAPP_CHANNEL})")
-    with c2:
-        with st.form("support_form"):
-            name = st.text_input("Your Name")
-            email = st.text_input("Your Email")
-            message = st.text_area("Message")
-            if st.form_submit_button("Send Message"):
-                st.success("Message received. We will respond within 24 hours.")
-
-    st.markdown("### FAQ")
-    with st.expander("How do I vote?"): st.write(f"Send ₦{VOTE_PRICE} per vote to {OPAY_ACCOUNT} ({OPAY_NAME}) and send proof to support.")
-    with st.expander("When does voting start?"): st.write("October 1, 2026")
-    with st.expander("When does registration end?"): st.write("September 30, 2026")
-    with st.expander("How are winners decided?"): st.write("By highest number of verified votes at the end of voting period.")
-
-# === SIDEBAR ===
-with st.sidebar:
-    st.markdown(f"<h1 style='color:{NAVY}; font-weight:900;'>{APP_NAME}</h1>", unsafe_allow_html=True)
-    st.markdown(f"<p style='color:{GOLD}; font-weight:600;'>{TAGLINE}</p>", unsafe_allow_html=True)
-    if st.session_state.whatsapp_confirmed:
-        st.success("✅ WhatsApp Channel Followed")
+    # CANDIDATE CARDS - AUTO UPLOAD WHEN APPROVED
+    if candidates.empty:
+        st.warning("No candidates yet. Admin needs to approve submissions.")
     else:
-        st.error("❌ Follow Channel to Unlock")
-    st.markdown(f"<a href='{WHATSAPP_CHANNEL}' target='_blank' style='background:{GREEN}; color:white; padding:0.7rem; border-radius:8px; text-decoration:none; font-weight:700; display:block; text-align:center;'>📢 Follow Channel</a>", unsafe_allow_html=True)
-    st.markdown("---")
-    page = st.radio("Navigation", ["Home", "Voter Registration", "Contestants", "Apply as Candidate", "Admin", "Contact Support"])
+        for i in range(0, len(candidates), 3):
+            cols = st.columns(3)
+            for j, col in enumerate(cols):
+                if i+j < len(candidates):
+                    cand = candidates.iloc[i+j]
+                    with col:
+                        with st.container(border=True):
+                            st.image(cand['photo'], use_column_width=True)
+                            st.markdown(f"### #{i+j+1} | CODE: `{cand['code']}`")
+                            st.markdown(f"#### {cand['name']}")
+                            st.markdown(f"**Why I need capital:** {cand['reason']}")
+                            st.markdown(f"**Location:** {cand['location']}")
+                            st.markdown(f"**Verified Votes:** {cand['votes']}")
 
-# === ROUTING ===
-if page == "Home": home_page()
-elif page == "Voter Registration": voter_registration_page()
-elif page == "Contestants": contestants_page()
-elif page == "Apply as Candidate": candidate_registration_page()
-elif page == "Admin": admin_page()
-elif page == "Contact Support": contact_support_page()
+                            if voting_enabled:
+                                if st.button(f"VOTE ₦{VOTE_PRICE}", key=f"vote{cand['id']}", use_container_width=True):
+                                    # CHANNEL POPUP FROM YESTERDAY
+                                    with st.dialog(f"Vote for {cand['name']}"):
+                                        st.write("To verify your vote:")
+                                        st.write(f"1. Pay ₦{VOTE_PRICE}")
+                                        st.write(f"2. [Follow our channel here]({CHANNEL_LINK})")
+                                        st.write("3. Click confirm below")
+                                        if st.button("I have paid & followed. Count my vote", key=f"confirm{cand['id']}"):
+                                            c.execute("UPDATE candidates SET votes=votes+1 WHERE id=?", (cand['id'],))
+                                            conn.commit()
+                                            st.success("Vote counted! Thank you for supporting.")
+                                            st.rerun()
 
-st.markdown(f"<footer>© 2026 {APP_NAME}. All Rights Reserved. | <a href='{WHATSAPP_CHANNEL}' style='color:{GOLD};'>Follow us on WhatsApp</a></footer>", unsafe_allow_html=True)
+# ===== PAGE: SUBMIT =====
+elif page == "📝 Submit":
+    st.title("Submit Your Talent")
+    st.write("Tell us your story and why you need capital.")
+    with st.form("submission_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        name = col1.text_input("Full Name *")
+        talent = col2.text_input("Talent/Category *")
+        phone = col1.text_input("Phone Number *")
+        bank = col2.text_input("Bank Account Details *")
+        location = st.text_input("City/Location where we can accept you *")
+        reason = st.text_area("Why do you need this capital? What will you use it for? *", height=150)
+        photo = st.file_uploader("Upload Clear Photo *", type=['png','jpg','jpeg'])
+        submitted = st.form_submit_button("Submit Application", use_container_width=True)
+
+        if submitted:
+            if not all([name, talent, phone, bank, location, reason, photo]):
+                st.error("Please fill all required fields")
+            else:
+                filepath = os.path.join(UPLOAD_FOLDER, f"{datetime.now().timestamp()}_{photo.name}")
+                with open(filepath, "wb") as f: f.write(photo.getbuffer())
+                c.execute("""INSERT INTO submissions
+                            (name, talent, phone, bank, photo, reason, location, status, created_at)
+                            VALUES (?,?,?,?,?)""",
+                          (name, talent, phone, bank, filepath, reason, location, 'pending', datetime.now()))
+                conn.commit()
+                st.success("✅ Submission received! We will review it within 48hrs.")
+
+# ===== PAGE: ABOUT =====
+elif page == "ℹ️ About":
+    st.title("About NEXERA")
+    st.markdown("""
+    ### Step Into Your Next Era
+
+    NEXERA is a youth empowerment competition.
+    Our mission is simple: **find raw talent and give it the capital to grow.**
+
+    Across Nigeria, there are singers with no studio time, dancers with no costumes, artists with no materials, and creators with no equipment. The talent is there. The opportunity isn’t.
+
+    NEXERA changes that.
+
+    #### How We Help
+    1. **Discover**: Talented people from all fields register and tell us their story. Not just their name, but *why* they need capital and what they’ll do with it.
+    2. **Support**: The public votes by supporting directly. Every vote is ₦200, and 100% of it goes straight to the contestant’s account. No deductions.
+    3. **Win Big**: After voting ends, the 3 contestants with the most verified votes receive cash prizes from our ₦200,000 pool to invest in their talent.
+
+    #### Why It’s Different
+    It’s a fair stage. Verified votes. Real receipts. Real impact.
+    When you vote on NEXERA, you’re not just clicking a button. You’re funding someone’s dream.
+
+    From music to dance, comedy to fashion, art to content creation — if you have talent and a plan, NEXERA is your stage.
+
+    Join us. Discover talent. Support creators. Win together.
+    **#YourNextEra #NexeraCompetition**
+    """)
+
+# ===== PAGE: ADMIN =====
+elif page == "🔒 Admin":
+    st.title("Admin Portal")
+    password = st.text_input("Enter Admin Password", type="password")
+
+    if password == ADMIN_PASSWORD:
+        st.success("Logged in")
+        settings = get_settings()
+
+        # 1. VOTING TOGGLE
+        st.subheader("1. Control Panel")
+        col1, col2 = st.columns(2)
+        col1.metric("Voting Status", "ON" if settings[1] else "OFF")
+        if col2.button("Toggle Voting On/Off", use_container_width=True): toggle_voting(); st.rerun()
+
+        # 2. DASHBOARD + GRAPH
+        st.subheader("2. Dashboard & Analytics")
+        candidates = get_all_candidates()
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Candidates", len(candidates))
+        col2.metric("Total Votes", candidates['votes'].sum())
+        col3.metric("Total ₦ Raised", f"₦{candidates['votes'].sum() * VOTE_PRICE:,}")
+
+        if not candidates.empty:
+            fig = px.bar(candidates, x='name', y='votes', title='Votes per Candidate', color='votes')
+            st.plotly_chart(fig, use_container_width=True)
+
+        # 3. PENDING SUBMISSIONS - APPROVE = INSTANT FRONT PAGE
+        st.subheader("3. Pending Submissions")
+        submissions = get_submissions()
+        if submissions.empty: st.info("No pending submissions")
+        for _, sub in submissions.iterrows():
+            with st.expander(f"{sub['name']} - {sub['talent']} | {sub['location']}"):
+                col1, col2 = st.columns([1,2])
+                col1.image(sub['photo'], width=150)
+                col2.write(f"**Phone:** {sub['phone']}")
+                col2.write(f"**Bank:** {sub['bank']}")
+                col2.write(f"**Reason:** {sub['reason']}")
+                if st.button("✅ Approve & Publish to Front Page", key=f"app{sub['id']}"):
+                    new_code = f"NEX{sub['id']:03d}"
+                    c.execute("""INSERT INTO candidates
+                                (code, name, photo, reason, location, votes, status, created_at)
+                                VALUES (?,?,?,?,?,?,?,?)""",
+                              (new_code, sub['name'], sub['photo'], sub['reason'],
+                               sub['location'], 0, 'approved', datetime.now()))
+                    c.execute("UPDATE submissions SET status='approved' WHERE id=?", (sub['id'],))
+                    conn.commit(); st.success(f"{sub['name']} is now LIVE"); st.rerun()
+
+        # 4. EDIT/DELETE CANDIDATES - NO GITHUB NEEDED
+        st.subheader("4. Manage Live Candidates")
+        for _, cand in candidates.iterrows():
+            with st.expander(f"{cand['name']} | {cand['code']} | Votes: {cand['votes']}"):
+                new_name = st.text_input("Name", cand['name'], key=f"n{cand['id']}")
+                new_reason = st.text_area("Reason", cand['reason'], key=f"r{cand['id']}")
+                new_loc = st.text_input("Location", cand['location'], key=f"l{cand['id']}")
+                col1, col2 = st.columns(2)
+                if col1.button("💾 Save Changes", key=f"s{cand['id']}"):
+                    c.execute("UPDATE candidates SET name=?, reason=?, location=? WHERE id=?",
+                              (new_name, new_reason, new_loc, cand['id'])); conn.commit(); st.success("Updated")
+                if col2.button("🗑️ Delete Candidate", key=f"d{cand['id']}"):
+                    c.execute("DELETE FROM candidates WHERE id=?", (cand['id'],)); conn.commit(); st.rerun()
+    elif password: st.error("Incorrect password")
+
+conn.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
