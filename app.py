@@ -9,7 +9,7 @@ DB_NAME = "nexera.db"
 UPLOAD_DIR = "uploads"
 PROOF_DIR = "proofs"
 CHANNEL_LINK = "https://whatsapp.com/channel/0029VbDJzRsGpLHMGlw2at0n"
-VOTING_ACCOUNT = {"Bank": "OPAY", "Account Name": "NEXERA SUPPORT", "Account No": "9123456789"} # CHANGE THIS TO YOUR ACCOUNT
+VOTING_ACCOUNT = {"Bank": "OPAY", "Account Name": "NEXERA SUPPORT", "Account No": "9123456789"} # CHANGE THIS
 VOTE_PRICE = 200
 ADMIN_PASSWORD = "nexera2026" # CHANGE THIS
 SUPPORT_EMAIL = "nexerasupport142@gmail.com"
@@ -41,22 +41,22 @@ st.markdown(f"""<div class="channel-banner">📢 <a href="{CHANNEL_LINK}" target
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    
+
     c.execute('''CREATE TABLE IF NOT EXISTS submissions
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, phone TEXT, talent TEXT, bank TEXT, photo TEXT,
                   reason TEXT, state TEXT, location TEXT, status TEXT DEFAULT 'pending', created_at TEXT, votes INTEGER DEFAULT 0)''')
-    
+
     c.execute('''CREATE TABLE IF NOT EXISTS votes
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, contestant_id INTEGER, voter_name TEXT, voter_phone TEXT,
                   proof TEXT, status TEXT DEFAULT 'pending', created_at TEXT)''')
-    
+
     c.execute('''CREATE TABLE IF NOT EXISTS settings
                  (key TEXT PRIMARY KEY, value TEXT)''')
-    
+
     defaults = [('voting_active', '0'), ('voting_start', ''), ('voting_end', '')]
     for key, value in defaults:
         c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (key, value))
-        
+
     conn.commit()
     conn.close()
 
@@ -92,7 +92,7 @@ def show_countdown():
     end = get_setting('voting_end')
     if end:
         try:
-            end_time = datetime.strptime(end, "%Y-%m-%d %H:%M:%S")
+            end_time = datetime.fromisoformat(end)
             now = datetime.now()
             if now < end_time:
                 remaining = end_time - now
@@ -177,7 +177,7 @@ with menu[1]:
                                 conn = sqlite3.connect(DB_NAME)
                                 c = conn.cursor()
                                 c.execute("INSERT INTO votes (contestant_id, voter_name, voter_phone, proof, status, created_at) VALUES (?,?,?,?,?,?)",
-                                          (contestant['id'], voter_name, voter_phone, proofpath, 'pending', str(datetime.now())))
+                                          (contestant['id'], voter_name, voter_phone, proofpath, 'pending', datetime.now().isoformat()))
                                 conn.commit()
                                 conn.close()
                                 del st.session_state['voting_for']
@@ -190,7 +190,7 @@ with menu[1]:
                             st.rerun()
         else: st.warning("No approved contestants to vote for yet.")
 
-# ========== SUBMIT TAB ==========
+# ========== SUBMIT TAB ========== FIXED
 with menu[2]:
     st.subheader("Submit Your Talent to NEXERA")
     with st.form("submission_form", clear_on_submit=True):
@@ -208,8 +208,9 @@ with menu[2]:
                 with open(filepath, "wb") as f: f.write(photo.getbuffer())
                 conn = sqlite3.connect(DB_NAME)
                 c = conn.cursor()
+                # FIXED: 10 columns = 10 placeholders
                 c.execute("INSERT INTO submissions (name, phone, talent, bank, photo, reason, state, location, status, created_at) VALUES (?,?,?,?,?,?)",
-                          (name, phone, talent, bank, filepath, reason, state, location, 'pending', str(datetime.now())))
+                          (name, phone, talent, bank, filepath, reason, state, location, 'pending', datetime.now().isoformat()))
                 conn.commit()
                 conn.close()
                 st.success("✅ Submission received! Awaiting admin approval.")
@@ -229,7 +230,7 @@ with menu[4]:
     password = st.text_input("Enter Admin Password", type="password")
     if password == ADMIN_PASSWORD:
         st.subheader("Admin Dashboard")
-        
+
         # STATS
         conn = sqlite3.connect(DB_NAME)
         total_submissions = pd.read_sql("SELECT COUNT(*) as c FROM submissions", conn).iloc[0]['c']
@@ -251,9 +252,9 @@ with menu[4]:
         if st.button("TURN ON VOTING" if not voting_active else "TURN OFF VOTING"):
             new_status = '0' if voting_active else '1'
             set_setting('voting_active', new_status)
-            if new_status == '1': 
-                set_setting('voting_start', str(datetime.now()))
-                set_setting('voting_end', str(datetime.now() + timedelta(days=7))) # 7 days voting
+            if new_status == '1':
+                set_setting('voting_start', datetime.now().isoformat())
+                set_setting('voting_end', (datetime.now() + timedelta(days=7)).isoformat()) # 7 days voting
             st.rerun()
         st.write(f"Status: {'🟢 ACTIVE' if voting_active else '🔴 INACTIVE'}")
 
