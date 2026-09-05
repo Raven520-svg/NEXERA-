@@ -34,60 +34,45 @@ h1, h2, h3, h4 {color: white;}
 </style>
 """, unsafe_allow_html=True)
 
-# ========== CHANNEL BANNER ==========
 st.markdown(f"""<div class="channel-banner">📢 <a href="{CHANNEL_LINK}" target="_blank">JOIN NEXERA WHATSAPP CHANNEL FOR UPDATES</a></div>""", unsafe_allow_html=True)
 
 # ========== DATABASE ==========
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-
     c.execute('''CREATE TABLE IF NOT EXISTS submissions
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, phone TEXT, talent TEXT, bank TEXT, photo TEXT,
                   reason TEXT, state TEXT, location TEXT, status TEXT DEFAULT 'pending', created_at TEXT, votes INTEGER DEFAULT 0)''')
-
     c.execute('''CREATE TABLE IF NOT EXISTS votes
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, contestant_id INTEGER, voter_name TEXT, voter_phone TEXT,
                   proof TEXT, status TEXT DEFAULT 'pending', created_at TEXT)''')
-
-    c.execute('''CREATE TABLE IF NOT EXISTS settings
-                 (key TEXT PRIMARY KEY, value TEXT)''')
-
+    c.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
     defaults = [('voting_active', '0'), ('voting_start', ''), ('voting_end', '')]
     for key, value in defaults:
         c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (key, value))
-
     conn.commit()
     conn.close()
 
 def get_setting(key):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT value FROM settings WHERE key =?", (key,))
-    res = c.fetchone()
-    conn.close()
-    return res[0] if res else ""
+    conn = sqlite3.connect(DB_NAME); c = conn.cursor()
+    c.execute("SELECT value FROM settings WHERE key =?", (key,)); res = c.fetchone()
+    conn.close(); return res[0] if res else ""
 
 def set_setting(key, value):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
+    conn = sqlite3.connect(DB_NAME); c = conn.cursor()
     c.execute("UPDATE settings SET value =? WHERE key =?", (value, key))
-    conn.commit()
-    conn.close()
+    conn.commit(); conn.close()
 
 init_db()
 
-# ========== DATA ==========
 NIGERIA_STATES = ["Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno", "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu", "FCT Abuja", "Gombe", "Imo", "Jigawa", "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi", "Kwara", "Lagos", "Nasarawa", "Niger", "Ogun", "Ondo", "Osun", "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe", "Zamfara"]
 CATEGORIES = ["Music", "Dance", "Comedy", "Content Creator", "Fashion Design", "Food & Catering", "Beauty & Makeup", "Barbing", "Tech & App Development", "Art & Painting", "Crafts", "Farming", "Sports", "Other"]
 
-# ========== HEADER + TABS ==========
 st.title("✨ NEXERA")
 st.subheader("STEP INTO YOUR NEXT ERA")
 st.write("**Community Support: Every ₦200 vote goes DIRECTLY to contestants** 💛")
 menu = st.tabs(["🏠 Home", "🗳️ Vote", "📝 Submit", "ℹ️ About", "⚙️ Admin"])
 
-# ========== COUNTDOWN FUNCTION ==========
 def show_countdown():
     end = get_setting('voting_end')
     if end:
@@ -97,14 +82,11 @@ def show_countdown():
             if now < end_time:
                 remaining = end_time - now
                 days, seconds = remaining.days, remaining.seconds
-                hours = seconds // 3600
-                minutes = (seconds % 3600) // 60
+                hours = seconds // 3600; minutes = (seconds % 3600) // 60
                 st.info(f"⏰ Voting Ends In: {days}d {hours}h {minutes}m")
-            else:
-                st.error("Voting has ended")
+            else: st.error("Voting has ended")
         except: pass
 
-# ========== HOME TAB ==========
 with menu[0]:
     col1, col2, col3 = st.columns(3)
     with col1: st.markdown('<div class="prize-box">', unsafe_allow_html=True); st.metric("🥇 1st Place", "₦120,000"); st.markdown('</div>', unsafe_allow_html=True)
@@ -112,35 +94,24 @@ with menu[0]:
     with col3: st.markdown('<div class="prize-box">', unsafe_allow_html=True); st.metric("🥉 3rd Place", "₦30,000"); st.markdown('</div>', unsafe_allow_html=True)
     st.markdown("---")
     st.subheader("🔥 Top Contestants")
-    conn = sqlite3.connect(DB_NAME)
-    df = pd.read_sql("SELECT * FROM submissions WHERE status='approved' ORDER BY votes DESC LIMIT 6", conn)
-    conn.close()
+    conn = sqlite3.connect(DB_NAME); df = pd.read_sql("SELECT * FROM submissions WHERE status='approved' ORDER BY votes DESC LIMIT 6", conn); conn.close()
     if not df.empty:
         cols = st.columns(2)
         for i, row in df.iterrows():
             with cols[i % 2]:
                 st.markdown('<div class="contestant-card">', unsafe_allow_html=True)
                 if row['photo'] and os.path.exists(row['photo']): st.image(row['photo'], use_column_width=True)
-                st.write(f"### {row['name']}")
-                st.write(f"**Category:** {row['talent']} | **State:** {row['state']}")
-                st.write(f"**Reason for Capital:** {row['reason']}")
-                st.write(f"**VERIFIED VOTES:** {row['votes']}")
+                st.write(f"### {row['name']}"); st.write(f"**Category:** {row['talent']} | **State:** {row['state']}")
+                st.write(f"**Reason for Capital:** {row['reason']}"); st.write(f"**VERIFIED VOTES:** {row['votes']}")
                 st.markdown('</div>', unsafe_allow_html=True)
     else: st.info("No contestants yet. Be the first to submit!")
 
-# ========== VOTE TAB ==========
 with menu[1]:
-    show_countdown()
-    voting_active = get_setting('voting_active') == '1'
-
-    if not voting_active:
-        st.error("🚫 Voting is currently CLOSED. Please check back later.")
+    show_countdown(); voting_active = get_setting('voting_active') == '1'
+    if not voting_active: st.error("🚫 Voting is currently CLOSED. Please check back later.")
     else:
-        st.subheader("Vote for Your Favorite")
-        st.warning(f"Each vote is ₦{VOTE_PRICE}. 100% goes to the contestant")
-        conn = sqlite3.connect(DB_NAME)
-        df = pd.read_sql("SELECT * FROM submissions WHERE status='approved' ORDER BY votes DESC", conn)
-        conn.close()
+        st.subheader("Vote for Your Favorite"); st.warning(f"Each vote is ₦{VOTE_PRICE}. 100% goes to the contestant")
+        conn = sqlite3.connect(DB_NAME); df = pd.read_sql("SELECT * FROM submissions WHERE status='approved' ORDER BY votes DESC", conn); conn.close()
         if not df.empty:
             for i in range(0, len(df), 2):
                 cols = st.columns(2)
@@ -150,23 +121,17 @@ with menu[1]:
                         with cols[j]:
                             st.markdown('<div class="contestant-card">', unsafe_allow_html=True)
                             if row['photo'] and os.path.exists(row['photo']): st.image(row['photo'], use_column_width=True)
-                            st.write(f"### {row['name']}")
-                            st.write(f"**{row['talent']} - {row['state']}**")
-                            st.write(f"**Reason:** {row['reason']}")
-                            st.write(f"**VERIFIED VOTES:** {row['votes']}")
-                            if st.button("VOTE NOW", key=f"vote_btn_{row['id']}"):
-                                st.session_state['voting_for'] = row['id']
-                                st.rerun()
+                            st.write(f"### {row['name']}"); st.write(f"**{row['talent']} - {row['state']}**")
+                            st.write(f"**Reason:** {row['reason']}"); st.write(f"**VERIFIED VOTES:** {row['votes']}")
+                            if st.button("VOTE NOW", key=f"vote_btn_{row['id']}"): st.session_state['voting_for'] = row['id']; st.rerun()
                             st.markdown('</div>', unsafe_allow_html=True)
-
             if 'voting_for' in st.session_state:
                 contestant = df[df['id'] == st.session_state['voting_for']].iloc[0]
                 with st.form("vote_form"):
                     st.subheader(f"Vote for {contestant['name']}")
                     st.markdown(f"""<div class="account-box"><h4>Step 1: Pay ₦{VOTE_PRICE} to:</h4><p><b>Bank:</b> {VOTING_ACCOUNT['Bank']}<br><b>Account Name:</b> {VOTING_ACCOUNT['Account Name']}<br><b>Account No:</b> {VOTING_ACCOUNT['Account No']}</p></div>""", unsafe_allow_html=True)
                     st.write("**Step 2: Upload Proof Below**")
-                    voter_name = st.text_input("Your Full Name *")
-                    voter_phone = st.text_input("Your Phone Number *")
+                    voter_name = st.text_input("Your Full Name *"); voter_phone = st.text_input("Your Phone Number *")
                     proof = st.file_uploader("Upload Proof of Payment *", type=['png', 'jpg', 'jpeg'])
                     col1, col2 = st.columns(2)
                     with col1:
@@ -174,28 +139,21 @@ with menu[1]:
                             if voter_name and voter_phone and proof:
                                 proofpath = os.path.join(PROOF_DIR, f"{datetime.now().timestamp()}_{proof.name}")
                                 with open(proofpath, "wb") as f: f.write(proof.getbuffer())
-                                conn = sqlite3.connect(DB_NAME)
-                                c = conn.cursor()
+                                conn = sqlite3.connect(DB_NAME); c = conn.cursor()
                                 c.execute("INSERT INTO votes (contestant_id, voter_name, voter_phone, proof, status, created_at) VALUES (?,?,?,?,?,?)",
                                           (contestant['id'], voter_name, voter_phone, proofpath, 'pending', datetime.now().isoformat()))
-                                conn.commit()
-                                conn.close()
-                                del st.session_state['voting_for']
-                                st.success("✅ Vote submitted! Awaiting admin approval.")
-                                st.rerun()
+                                conn.commit(); conn.close(); del st.session_state['voting_for']
+                                st.success("✅ Vote submitted! Awaiting admin approval."); st.rerun()
                             else: st.error("Please fill all fields and upload proof")
                     with col2:
-                        if st.form_submit_button("CANCEL"):
-                            del st.session_state['voting_for']
-                            st.rerun()
+                        if st.form_submit_button("CANCEL"): del st.session_state['voting_for']; st.rerun()
         else: st.warning("No approved contestants to vote for yet.")
 
-# ========== SUBMIT TAB ========== FIXED
+# ========== SUBMIT TAB ========== FIXED FOR REAL THIS TIME
 with menu[2]:
     st.subheader("Submit Your Talent to NEXERA")
     with st.form("submission_form", clear_on_submit=True):
-        name = st.text_input("Full Name *")
-        phone = st.text_input("Phone Number *")
+        name = st.text_input("Full Name *"); phone = st.text_input("Phone Number *")
         talent = st.selectbox("Talent/Category *", ["Select..."] + CATEGORIES)
         state = st.selectbox("State *", ["Select..."] + NIGERIA_STATES)
         location = st.text_input("City/Location where NEXERA can accept you *")
@@ -206,17 +164,14 @@ with menu[2]:
             if name and phone and talent!= "Select..." and state!= "Select..." and location and bank and reason and photo:
                 filepath = os.path.join(UPLOAD_DIR, f"{datetime.now().timestamp()}_{photo.name}")
                 with open(filepath, "wb") as f: f.write(photo.getbuffer())
-                conn = sqlite3.connect(DB_NAME)
-                c = conn.cursor()
-                # FIXED: 10 columns = 10 placeholders
-                c.execute("INSERT INTO submissions (name, phone, talent, bank, photo, reason, state, location, status, created_at) VALUES (?,?,?,?,?,?)",
+                conn = sqlite3.connect(DB_NAME); c = conn.cursor()
+                # FIXED: 10 COLUMNS = 10 QUESTION MARKS
+                c.execute("INSERT INTO submissions (name, phone, talent, bank, photo, reason, state, location, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                           (name, phone, talent, bank, filepath, reason, state, location, 'pending', datetime.now().isoformat()))
-                conn.commit()
-                conn.close()
+                conn.commit(); conn.close()
                 st.success("✅ Submission received! Awaiting admin approval.")
             else: st.error("❌ Please fill all * fields and select State + Category")
 
-# ========== ABOUT TAB ==========
 with menu[3]:
     st.subheader("About NEXERA")
     st.write("**NEXERA is a community-driven talent and SME funding platform.**")
@@ -225,41 +180,27 @@ with menu[3]:
     st.write("**Our mission:** To fund 1000 SMEs and Talents by 2027.")
     st.markdown(f"**Join our community:** {CHANNEL_LINK}")
 
-# ========== ADMIN TAB ==========
 with menu[4]:
     password = st.text_input("Enter Admin Password", type="password")
     if password == ADMIN_PASSWORD:
         st.subheader("Admin Dashboard")
-
-        # STATS
         conn = sqlite3.connect(DB_NAME)
         total_submissions = pd.read_sql("SELECT COUNT(*) as c FROM submissions", conn).iloc[0]['c']
         total_approved = pd.read_sql("SELECT COUNT(*) as c FROM submissions WHERE status='approved'", conn).iloc[0]['c']
         total_votes = pd.read_sql("SELECT COUNT(*) as c FROM votes WHERE status='approved'", conn).iloc[0]['c']
-        funds_raised = total_votes * VOTE_PRICE
-        conn.close()
-
+        funds_raised = total_votes * VOTE_PRICE; conn.close()
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Submissions", total_submissions)
-        col2.metric("Approved Contestants", total_approved)
-        col3.metric("Total Voters", total_votes)
-        col4.metric("Funds Raised", f"₦{funds_raised:,}")
-
+        col1.metric("Total Submissions", total_submissions); col2.metric("Approved Contestants", total_approved)
+        col3.metric("Total Voters", total_votes); col4.metric("Funds Raised", f"₦{funds_raised:,}")
         st.markdown("---")
-        # VOTING CONTROLS
         st.subheader("Voting Controls")
         voting_active = get_setting('voting_active') == '1'
         if st.button("TURN ON VOTING" if not voting_active else "TURN OFF VOTING"):
-            new_status = '0' if voting_active else '1'
-            set_setting('voting_active', new_status)
-            if new_status == '1':
-                set_setting('voting_start', datetime.now().isoformat())
-                set_setting('voting_end', (datetime.now() + timedelta(days=7)).isoformat()) # 7 days voting
+            new_status = '0' if voting_active else '1'; set_setting('voting_active', new_status)
+            if new_status == '1': set_setting('voting_start', datetime.now().isoformat()); set_setting('voting_end', (datetime.now() + timedelta(days=7)).isoformat())
             st.rerun()
         st.write(f"Status: {'🟢 ACTIVE' if voting_active else '🔴 INACTIVE'}")
-
         st.markdown("---")
-        # APPROVE SUBMISSIONS
         st.subheader("Approve Contestants")
         conn = sqlite3.connect(DB_NAME); df_sub = pd.read_sql("SELECT * FROM submissions WHERE status='pending'", conn); conn.close()
         if not df_sub.empty:
@@ -270,9 +211,7 @@ with menu[4]:
                     if st.button("Approve", key=f"approve_{row['id']}"):
                         conn = sqlite3.connect(DB_NAME); c = conn.cursor(); c.execute("UPDATE submissions SET status='approved' WHERE id =?", (row['id'],)); conn.commit(); conn.close(); st.rerun()
         else: st.info("No pending submissions")
-
         st.markdown("---")
-        # APPROVE VOTES
         st.subheader("Approve Votes / Proof of Payment")
         conn = sqlite3.connect(DB_NAME); df_votes = pd.read_sql("SELECT v.*, s.name as contestant_name FROM votes v JOIN submissions s ON v.contestant_id=s.id WHERE v.status='pending'", conn); conn.close()
         if not df_votes.empty:
@@ -285,10 +224,8 @@ with menu[4]:
                     c.execute("UPDATE submissions SET votes = votes + 1 WHERE id =?", (row['contestant_id'],))
                     conn.commit(); conn.close(); st.success("Vote Approved!"); st.rerun()
         else: st.info("No pending votes")
-
     elif password: st.error("Wrong password")
 
-# ========== FOOTER ==========
 st.markdown("---")
 st.write("### NEXERA Support")
 col1, col2 = st.columns(2)
