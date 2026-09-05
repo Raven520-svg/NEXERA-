@@ -38,8 +38,7 @@ st.markdown(f"""<div class="channel-banner">📢 <a href="{CHANNEL_LINK}" target
 
 # ========== DATABASE ==========
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
+    conn = sqlite3.connect(DB_NAME); c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS submissions
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, phone TEXT, talent TEXT, bank TEXT, photo TEXT,
                   reason TEXT, state TEXT, location TEXT, status TEXT DEFAULT 'pending', created_at TEXT, votes INTEGER DEFAULT 0)''')
@@ -50,8 +49,7 @@ def init_db():
     defaults = [('voting_active', '0'), ('voting_start', ''), ('voting_end', '')]
     for key, value in defaults:
         c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (key, value))
-    conn.commit()
-    conn.close()
+    conn.commit(); conn.close()
 
 def get_setting(key):
     conn = sqlite3.connect(DB_NAME); c = conn.cursor()
@@ -77,11 +75,9 @@ def show_countdown():
     end = get_setting('voting_end')
     if end:
         try:
-            end_time = datetime.fromisoformat(end)
-            now = datetime.now()
+            end_time = datetime.fromisoformat(end); now = datetime.now()
             if now < end_time:
-                remaining = end_time - now
-                days, seconds = remaining.days, remaining.seconds
+                remaining = end_time - now; days, seconds = remaining.days, remaining.seconds
                 hours = seconds // 3600; minutes = (seconds % 3600) // 60
                 st.info(f"⏰ Voting Ends In: {days}d {hours}h {minutes}m")
             else: st.error("Voting has ended")
@@ -100,7 +96,8 @@ with menu[0]:
         for i, row in df.iterrows():
             with cols[i % 2]:
                 st.markdown('<div class="contestant-card">', unsafe_allow_html=True)
-                if row['photo'] and os.path.exists(row['photo']): st.image(row['photo'], use_column_width=True)
+                if row['photo'] and os.path.exists(row['photo']):
+                    st.image(row['photo'], use_container_width=True) # FIXED
                 st.write(f"### {row['name']}"); st.write(f"**Category:** {row['talent']} | **State:** {row['state']}")
                 st.write(f"**Reason for Capital:** {row['reason']}"); st.write(f"**VERIFIED VOTES:** {row['votes']}")
                 st.markdown('</div>', unsafe_allow_html=True)
@@ -120,7 +117,8 @@ with menu[1]:
                         row = df.iloc[i + j]
                         with cols[j]:
                             st.markdown('<div class="contestant-card">', unsafe_allow_html=True)
-                            if row['photo'] and os.path.exists(row['photo']): st.image(row['photo'], use_column_width=True)
+                            if row['photo'] and os.path.exists(row['photo']):
+                                st.image(row['photo'], use_container_width=True) # FIXED
                             st.write(f"### {row['name']}"); st.write(f"**{row['talent']} - {row['state']}**")
                             st.write(f"**Reason:** {row['reason']}"); st.write(f"**VERIFIED VOTES:** {row['votes']}")
                             if st.button("VOTE NOW", key=f"vote_btn_{row['id']}"): st.session_state['voting_for'] = row['id']; st.rerun()
@@ -149,7 +147,6 @@ with menu[1]:
                         if st.form_submit_button("CANCEL"): del st.session_state['voting_for']; st.rerun()
         else: st.warning("No approved contestants to vote for yet.")
 
-# ========== SUBMIT TAB ========== FIXED FOR REAL THIS TIME
 with menu[2]:
     st.subheader("Submit Your Talent to NEXERA")
     with st.form("submission_form", clear_on_submit=True):
@@ -165,8 +162,7 @@ with menu[2]:
                 filepath = os.path.join(UPLOAD_DIR, f"{datetime.now().timestamp()}_{photo.name}")
                 with open(filepath, "wb") as f: f.write(photo.getbuffer())
                 conn = sqlite3.connect(DB_NAME); c = conn.cursor()
-                # FIXED: 10 COLUMNS = 10 QUESTION MARKS
-                c.execute("INSERT INTO submissions (name, phone, talent, bank, photo, reason, state, location, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                c.execute("INSERT INTO submissions (name, phone, talent, bank, photo, reason, state, location, status, created_at) VALUES (?,?,?,?,?,?)",
                           (name, phone, talent, bank, filepath, reason, state, location, 'pending', datetime.now().isoformat()))
                 conn.commit(); conn.close()
                 st.success("✅ Submission received! Awaiting admin approval.")
@@ -205,11 +201,15 @@ with menu[4]:
         conn = sqlite3.connect(DB_NAME); df_sub = pd.read_sql("SELECT * FROM submissions WHERE status='pending'", conn); conn.close()
         if not df_sub.empty:
             for i, row in df_sub.iterrows():
-                col1, col2 = st.columns([4,1])
-                with col1: st.write(f"**{row['name']}** - {row['talent']} - {row['state']}")
-                with col2:
-                    if st.button("Approve", key=f"approve_{row['id']}"):
-                        conn = sqlite3.connect(DB_NAME); c = conn.cursor(); c.execute("UPDATE submissions SET status='approved' WHERE id =?", (row['id'],)); conn.commit(); conn.close(); st.rerun()
+                st.markdown('<div class="contestant-card">', unsafe_allow_html=True)
+                if row['photo'] and os.path.exists(row['photo']):
+                    st.image(row['photo'], width=200) # NOW SHOWS PHOTO IN ADMIN
+                st.write(f"**{row['name']}** - {row['talent']} - {row['state']}")
+                st.write(f"**Phone:** {row['phone']} | **Bank:** {row['bank']}")
+                st.write(f"**Reason:** {row['reason']}")
+                if st.button("Approve", key=f"approve_{row['id']}"):
+                    conn = sqlite3.connect(DB_NAME); c = conn.cursor(); c.execute("UPDATE submissions SET status='approved' WHERE id =?", (row['id'],)); conn.commit(); conn.close(); st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
         else: st.info("No pending submissions")
         st.markdown("---")
         st.subheader("Approve Votes / Proof of Payment")
