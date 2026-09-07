@@ -1,16 +1,40 @@
+
 import streamlit as st
 import sqlite3
 import os
+import io
+import uuid
 from datetime import datetime, timedelta
-import pandas as pd
 
-# ========== SETTINGS ==========
+import pandas as pd
+from PIL import Image, ImageOps
+
+# Optional HEIC/HEIF support
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    HEIF_SUPPORTED = True
+except Exception:
+    HEIF_SUPPORTED = False
+
+
+# ============================================================
+# NEXERA CONFIGURATION
+# ============================================================
+
+st.set_page_config(
+    page_title="NEXERA — Your Next Era",
+    page_icon="N",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 DB_NAME = "nexera.db"
 UPLOAD_DIR = "uploads"
 PROOF_DIR = "proofs"
+
 CHANNEL_LINK = "https://whatsapp.com/channel/0029VbDJzRsGpLHMGlw2at0n"
 
-# VOTING PAYMENT ACCOUNT
 VOTING_ACCOUNT = {
     "Bank": "OPAY",
     "Account Name": "NEXERA SUPPORT",
@@ -19,109 +43,48 @@ VOTING_ACCOUNT = {
 
 VOTE_PRICE = 200
 ADMIN_PASSWORD = "nexera2026"
+
 SUPPORT_EMAIL = "nexerasupport142@gmail.com"
 SUPPORT_WHATSAPP = "09018479293"
+
+PRIZES = {
+    1: 120000,
+    2: 70000,
+    3: 30000
+}
+
+# Maximum dimension used when optimizing uploaded images.
+# This prevents extremely huge camera photos from slowing the website.
+MAX_IMAGE_DIMENSION = 2500
+
+# JPEG quality after optimization.
+IMAGE_QUALITY = 88
+
+
+# ============================================================
+# FOLDERS
+# ============================================================
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(PROOF_DIR, exist_ok=True)
 
 
-# ========== PAGE CONFIG + CSS ==========
-st.set_page_config(
-    page_title="NEXERA - Your Next Era",
-    page_icon="✨",
-    layout="wide"
-)
+# ============================================================
+# DATABASE
+# ============================================================
 
-st.markdown("""
-<style>
-.main {
-    background-color: #000;
-    color: white;
-}
-
-.stButton>button {
-    background-color: #B91C1C;
-    color: white;
-    border-radius: 8px;
-    width: 100%;
-    border: none;
-    font-weight: bold;
-    padding: 10px;
-}
-
-.stButton>button:hover {
-    background-color: #991B1B;
-}
-
-.contestant-card {
-    border: 1px solid #333;
-    border-radius: 10px;
-    padding: 15px;
-    background-color: #111;
-    margin-bottom: 15px;
-}
-
-.prize-box {
-    text-align: center;
-    border: 2px solid #FFD700;
-    border-radius: 10px;
-    padding: 15px;
-    background-color: #1a1a1a;
-}
-
-.channel-banner {
-    background-color: #25D366;
-    padding: 12px;
-    border-radius: 8px;
-    text-align: center;
-    margin-bottom: 20px;
-}
-
-.channel-banner a {
-    color: white;
-    font-weight: bold;
-    text-decoration: none;
-    font-size: 17px;
-}
-
-.account-box {
-    border: 2px dashed #FFD700;
-    padding: 15px;
-    border-radius: 10px;
-    background-color: #1a1a1a;
-    margin-bottom: 15px;
-}
-
-h1, h2, h3, h4 {
-    color: white;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-st.markdown(
-    f"""
-    <div class="channel-banner">
-        📢 <a href="{CHANNEL_LINK}" target="_blank">
-        JOIN NEXERA WHATSAPP CHANNEL FOR UPDATES
-        </a>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
-
-# ========== DATABASE ==========
 def get_connection():
-    return sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 def init_db():
     conn = get_connection()
     c = conn.cursor()
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
@@ -136,9 +99,11 @@ def init_db():
             created_at TEXT,
             votes INTEGER DEFAULT 0
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS votes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             contestant_id INTEGER,
@@ -148,14 +113,17 @@ def init_db():
             status TEXT DEFAULT 'pending',
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT
         )
-    """)
+        """
+    )
 
     defaults = [
         ("voting_active", "0"),
@@ -165,13 +133,23 @@ def init_db():
 
     for key, value in defaults:
         c.execute(
-            "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+            """
+            INSERT OR IGNORE INTO settings (key, value)
+            VALUES (?, ?)
+            """,
             (key, value)
         )
 
     conn.commit()
     conn.close()
 
+
+init_db()
+
+
+# ============================================================
+# DATABASE HELPERS
+# ============================================================
 
 def get_setting(key):
     conn = get_connection()
@@ -182,10 +160,10 @@ def get_setting(key):
         (key,)
     )
 
-    result = c.fetchone()
+    row = c.fetchone()
     conn.close()
 
-    return result[0] if result else ""
+    return row["value"] if row else ""
 
 
 def set_setting(key, value):
@@ -193,158 +171,323 @@ def set_setting(key, value):
     c = conn.cursor()
 
     c.execute(
-        "UPDATE settings SET value = ? WHERE key = ?",
-        (value, key)
+        """
+        INSERT INTO settings (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key)
+        DO UPDATE SET value = excluded.value
+        """,
+        (key, str(value))
     )
 
     conn.commit()
     conn.close()
 
 
-init_db()
+def get_contestants(status=None):
+    conn = get_connection()
+
+    if status:
+        df = pd.read_sql_query(
+            """
+            SELECT *
+            FROM submissions
+            WHERE status = ?
+            ORDER BY votes DESC, id ASC
+            """,
+            conn,
+            params=(status,)
+        )
+    else:
+        df = pd.read_sql_query(
+            """
+            SELECT *
+            FROM submissions
+            ORDER BY id DESC
+            """,
+            conn
+        )
+
+    conn.close()
+    return df
 
 
-# ========== CONSTANTS ==========
-NIGERIA_STATES = [
-    "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi",
-    "Bayelsa", "Benue", "Borno", "Cross River", "Delta",
-    "Ebonyi", "Edo", "Ekiti", "Enugu", "FCT Abuja",
-    "Gombe", "Imo", "Jigawa", "Kaduna", "Kano",
-    "Katsina", "Kebbi", "Kogi", "Kwara", "Lagos",
-    "Nasarawa", "Niger", "Ogun", "Ondo", "Osun",
-    "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba",
-    "Yobe", "Zamfara"
-]
+# ============================================================
+# IMAGE HANDLING
+# ============================================================
 
-CATEGORIES = [
-    "Music",
-    "Dance",
-    "Comedy",
-    "Content Creator",
-    "Fashion Design",
-    "Food & Catering",
-    "Beauty & Makeup",
-    "Barbing",
-    "Tech & App Development",
-    "Art & Painting",
-    "Crafts",
-    "Farming",
-    "Sports",
-    "Other"
-]
+def save_uploaded_image(uploaded_file, output_folder, prefix="image"):
+    """
+    Accepts uploaded image files, opens them with Pillow,
+    automatically fixes camera orientation, resizes very large
+    images and stores an optimized JPEG.
 
+    This means the original image does not have to be small.
+    """
 
-# ========== HEADER ==========
-st.title("✨ NEXERA")
-st.subheader("STEP INTO YOUR NEXT ERA")
-st.write(
-    "**Community Support: Every ₦200 vote goes DIRECTLY to contestants** 💛"
-)
+    if uploaded_file is None:
+        return None
 
-menu = st.tabs([
-    "🏠 Home",
-    "🗳️ Vote",
-    "📝 Submit",
-    "ℹ️ About",
-    "⚙️ Admin"
-])
+    try:
+        # Read uploaded bytes
+        image_bytes = uploaded_file.getvalue()
 
+        if not image_bytes:
+            raise ValueError("The uploaded image is empty.")
 
-# ========== COUNTDOWN ==========
-def show_countdown():
-    end = get_setting("voting_end")
+        # Open image
+        image = Image.open(io.BytesIO(image_bytes))
 
-    if end:
-        try:
-            end_time = datetime.fromisoformat(end)
-            now = datetime.now()
+        # Fix phone/camera EXIF orientation
+        image = ImageOps.exif_transpose(image)
 
-            if now < end_time:
-                remaining = end_time - now
+        # Convert unsupported modes
+        if image.mode in ("RGBA", "LA", "P"):
+            background = Image.new("RGB", image.size, "white")
 
-                days = remaining.days
-                seconds = remaining.seconds
+            if image.mode == "P":
+                image = image.convert("RGBA")
 
-                hours = seconds // 3600
-                minutes = (seconds % 3600) // 60
-
-                st.info(
-                    f"⏰ Voting Ends In: "
-                    f"{days}d {hours}h {minutes}m"
+            if image.mode in ("RGBA", "LA"):
+                background.paste(
+                    image,
+                    mask=image.getchannel("A")
                 )
+                image = background
             else:
-                st.error("Voting has ended")
+                image = image.convert("RGB")
+        else:
+            image = image.convert("RGB")
+
+        # Resize only if necessary
+        width, height = image.size
+
+        if max(width, height) > MAX_IMAGE_DIMENSION:
+            scale = MAX_IMAGE_DIMENSION / max(width, height)
+
+            new_width = max(1, int(width * scale))
+            new_height = max(1, int(height * scale))
+
+            image = image.resize(
+                (new_width, new_height),
+                Image.Resampling.LANCZOS
+            )
+
+        # Generate unique filename
+        filename = (
+            f"{prefix}_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+            f"{uuid.uuid4().hex[:10]}.jpg"
+        )
+
+        filepath = os.path.join(output_folder, filename)
+
+        # Save optimized JPEG
+        image.save(
+            filepath,
+            "JPEG",
+            quality=IMAGE_QUALITY,
+            optimize=True
+        )
+
+        return filepath
+
+    except Exception as e:
+        st.error(
+            f"Could not process this image. "
+            f"Please try another image. Error: {e}"
+        )
+        return None
+
+
+# ============================================================
+# VOTING STATUS
+# ============================================================
+
+def voting_is_active():
+    active = get_setting("voting_active")
+
+    if active != "1":
+        return False
+
+    end_value = get_setting("voting_end")
+
+    if end_value:
+        try:
+            end_time = datetime.fromisoformat(end_value)
+
+            if datetime.now() >= end_time:
+                set_setting("voting_active", "0")
+                return False
 
         except Exception:
             pass
+
+    return True
+
+
+# ============================================================
+# CSS
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+    .main {
+        background-color: #ffffff;
+    }
+
+    .nexera-title {
+        font-size: 55px;
+        font-weight: 900;
+        text-align: center;
+        letter-spacing: 5px;
+        margin-bottom: 0;
+    }
+
+    .nexera-subtitle {
+        text-align: center;
+        font-size: 20px;
+        color: #666;
+        margin-bottom: 30px;
+    }
+
+    .hero-box {
+        padding: 35px;
+        border-radius: 20px;
+        background: linear-gradient(
+            135deg,
+            #111111,
+            #292929
+        );
+        color: white;
+        text-align: center;
+        margin-bottom: 30px;
+    }
+
+    .hero-box h1 {
+        font-size: 48px;
+        margin-bottom: 10px;
+    }
+
+    .hero-box p {
+        font-size: 20px;
+    }
+
+    .contestant-card {
+        padding: 15px;
+        border-radius: 18px;
+        border: 1px solid #dddddd;
+        margin-bottom: 20px;
+        background: white;
+    }
+
+    .vote-count {
+        font-size: 24px;
+        font-weight: 800;
+    }
+
+    .rank-number {
+        font-size: 30px;
+        font-weight: 900;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+st.sidebar.title("NEXERA")
+
+st.sidebar.markdown(
+    "**Your Next Era**"
+)
+
+page = st.sidebar.radio(
+    "Navigation",
+    [
+        "Home",
+        "Register",
+        "Vote",
+        "Support",
+        "Admin"
+    ]
+)
+
+st.sidebar.markdown("---")
+
+st.sidebar.info(
+    "Registration is open. "
+    "Voting begins when the NEXERA team activates the voting period."
+)
 
 
 # ============================================================
 # HOME
 # ============================================================
-with menu[0]:
+
+if page == "Home":
+
+    st.markdown(
+        """
+        <div class="hero-box">
+            <h1>NEXERA</h1>
+            <p>Your Next Era</p>
+            <p>
+                Discover talents. Support dreams.
+                Change someone's next chapter.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.markdown(
-            '<div class="prize-box">',
-            unsafe_allow_html=True
-        )
-        st.metric("🥇 1st Place", "₦120,000")
-        st.markdown(
-            '</div>',
-            unsafe_allow_html=True
-        )
+        st.metric("1st Prize", "₦120,000")
 
     with col2:
-        st.markdown(
-            '<div class="prize-box">',
-            unsafe_allow_html=True
-        )
-        st.metric("🥈 2nd Place", "₦70,000")
-        st.markdown(
-            '</div>',
-            unsafe_allow_html=True
-        )
+        st.metric("2nd Prize", "₦70,000")
 
     with col3:
-        st.markdown(
-            '<div class="prize-box">',
-            unsafe_allow_html=True
-        )
-        st.metric("🥉 3rd Place", "₦30,000")
-        st.markdown(
-            '</div>',
-            unsafe_allow_html=True
-        )
+        st.metric("3rd Prize", "₦30,000")
 
     st.markdown("---")
 
-    st.subheader("🔥 Top Contestants")
+    if voting_is_active():
+        st.success("🟢 VOTING IS CURRENTLY OPEN")
+    else:
+        st.warning(
+            "🔴 Voting is currently closed. "
+            "Registration can still be available."
+        )
 
-    conn = get_connection()
+    st.markdown("## Featured Contestants")
 
-    df = pd.read_sql(
-        """
-        SELECT *
-        FROM submissions
-        WHERE status = 'approved'
-        ORDER BY votes DESC
-        LIMIT 6
-        """,
-        conn
-    )
+    contestants = get_contestants("approved")
 
-    conn.close()
+    if contestants.empty:
+        st.info(
+            "No contestants have been approved yet. "
+            "Be the first to register."
+        )
 
-    if not df.empty:
+    else:
 
-        cols = st.columns(2)
+        contestants = contestants.head(6)
 
-        for i, row in df.iterrows():
+        cols = st.columns(3)
 
-            with cols[i % 2]:
+        for index, (_, row) in enumerate(contestants.iterrows()):
+
+            with cols[index % 3]:
 
                 st.markdown(
                     '<div class="contestant-card">',
@@ -357,324 +500,80 @@ with menu[0]:
                         use_container_width=True
                     )
 
-                st.write(f"### {row['name']}")
-
-                st.write(
-                    f"**Category:** {row['talent']} | "
-                    f"**State:** {row['state']}"
+                st.markdown(
+                    f"### {row['name']}"
                 )
 
                 st.write(
-                    f"**Reason for Capital:** {row['reason']}"
+                    f"**Talent:** {row['talent']}"
                 )
 
                 st.write(
-                    f"**VERIFIED VOTES:** {int(row['votes'])}"
+                    f"**Location:** {row['location']}, {row['state']}"
+                )
+
+                st.write(
+                    f"**Votes:** {int(row['votes'])}"
+                )
+
+                st.write(
+                    row["reason"]
                 )
 
                 st.markdown(
-                    '</div>',
+                    "</div>",
                     unsafe_allow_html=True
                 )
 
-    else:
-        st.info(
-            "No contestants yet. Be the first to submit!"
-        )
+    st.markdown("---")
 
+    st.subheader("Join NEXERA")
 
-# ============================================================
-# VOTE
-# ============================================================
-with menu[1]:
+    st.write(
+        "Do you have a talent, business idea, creative skill, "
+        "or dream that deserves support?"
+    )
 
-    show_countdown()
-
-    voting_active = get_setting("voting_active") == "1"
-
-    if not voting_active:
-
-        st.error(
-            "🚫 Voting is currently CLOSED. "
-            "Please check back later."
-        )
-
-    else:
-
-        st.subheader("Vote for Your Favorite")
-
-        st.warning(
-            f"Each vote is ₦{VOTE_PRICE}. "
-            "100% goes to the contestant"
-        )
-
-        conn = get_connection()
-
-        df = pd.read_sql(
-            """
-            SELECT *
-            FROM submissions
-            WHERE status = 'approved'
-            ORDER BY votes DESC
-            """,
-            conn
-        )
-
-        conn.close()
-
-        if not df.empty:
-
-            for i in range(0, len(df), 2):
-
-                cols = st.columns(2)
-
-                for j in range(2):
-
-                    if i + j < len(df):
-
-                        row = df.iloc[i + j]
-
-                        with cols[j]:
-
-                            st.markdown(
-                                '<div class="contestant-card">',
-                                unsafe_allow_html=True
-                            )
-
-                            if (
-                                row["photo"]
-                                and os.path.exists(row["photo"])
-                            ):
-                                st.image(
-                                    row["photo"],
-                                    use_container_width=True
-                                )
-
-                            st.write(
-                                f"### {row['name']}"
-                            )
-
-                            st.write(
-                                f"**{row['talent']} - "
-                                f"{row['state']}**"
-                            )
-
-                            st.write(
-                                f"**Reason:** {row['reason']}"
-                            )
-
-                            st.write(
-                                f"**VERIFIED VOTES:** "
-                                f"{int(row['votes'])}"
-                            )
-
-                            if st.button(
-                                "VOTE NOW",
-                                key=f"vote_btn_{row['id']}"
-                            ):
-
-                                st.session_state[
-                                    "voting_for"
-                                ] = int(row["id"])
-
-                                st.rerun()
-
-                            st.markdown(
-                                '</div>',
-                                unsafe_allow_html=True
-                            )
-
-            if "voting_for" in st.session_state:
-
-                contestant_id = st.session_state["voting_for"]
-
-                conn = get_connection()
-
-                contestant_df = pd.read_sql(
-                    """
-                    SELECT *
-                    FROM submissions
-                    WHERE id = ?
-                    AND status = 'approved'
-                    """,
-                    conn,
-                    params=(contestant_id,)
-                )
-
-                conn.close()
-
-                if not contestant_df.empty:
-
-                    contestant = contestant_df.iloc[0]
-
-                    with st.form("vote_form"):
-
-                        st.subheader(
-                            f"Vote for {contestant['name']}"
-                        )
-
-                        # PAYMENT DETAILS SHOWN TO VOTERS
-                        st.markdown(
-                            f"""
-                            <div class="account-box">
-                                <h4>Step 1: Pay ₦{VOTE_PRICE} to:</h4>
-                                <p>
-                                <b>Bank:</b>
-                                {VOTING_ACCOUNT['Bank']}<br>
-
-                                <b>Account Name:</b>
-                                {VOTING_ACCOUNT['Account Name']}<br>
-
-                                <b>Account No:</b>
-                                {VOTING_ACCOUNT['Account No']}
-                                </p>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
-
-                        st.write(
-                            "**Step 2: Upload Proof Below**"
-                        )
-
-                        voter_name = st.text_input(
-                            "Your Full Name *"
-                        )
-
-                        voter_phone = st.text_input(
-                            "Your Phone Number *"
-                        )
-
-                        proof = st.file_uploader(
-                            "Upload Proof of Payment *",
-                            type=["png", "jpg", "jpeg"]
-                        )
-
-                        col1, col2 = st.columns(2)
-
-                        with col1:
-
-                            submit_vote = st.form_submit_button(
-                                "SUBMIT VOTE"
-                            )
-
-                        with col2:
-
-                            cancel_vote = st.form_submit_button(
-                                "CANCEL"
-                            )
-
-                        if submit_vote:
-
-                            if (
-                                voter_name
-                                and voter_phone
-                                and proof
-                            ):
-
-                                timestamp = datetime.now().strftime(
-                                    "%Y%m%d%H%M%S%f"
-                                )
-
-                                safe_filename = os.path.basename(
-                                    proof.name
-                                )
-
-                                proofpath = os.path.join(
-                                    PROOF_DIR,
-                                    f"{timestamp}_{safe_filename}"
-                                )
-
-                                with open(
-                                    proofpath,
-                                    "wb"
-                                ) as f:
-
-                                    f.write(
-                                        proof.getbuffer()
-                                    )
-
-                                conn = get_connection()
-                                c = conn.cursor()
-
-                                c.execute(
-                                    """
-                                    INSERT INTO votes
-                                    (
-                                        contestant_id,
-                                        voter_name,
-                                        voter_phone,
-                                        proof,
-                                        status,
-                                        created_at
-                                    )
-                                    VALUES (?, ?, ?, ?, ?, ?)
-                                    """,
-                                    (
-                                        int(contestant["id"]),
-                                        voter_name,
-                                        voter_phone,
-                                        proofpath,
-                                        "pending",
-                                        datetime.now().isoformat()
-                                    )
-                                )
-
-                                conn.commit()
-                                conn.close()
-
-                                del st.session_state[
-                                    "voting_for"
-                                ]
-
-                                st.success(
-                                    "✅ Vote submitted! "
-                                    "Awaiting admin approval."
-                                )
-
-                                st.rerun()
-
-                            else:
-
-                                st.error(
-                                    "Please fill all fields "
-                                    "and upload proof"
-                                )
-
-                        if cancel_vote:
-
-                            del st.session_state[
-                                "voting_for"
-                            ]
-
-                            st.rerun()
-
-                else:
-
-                    del st.session_state["voting_for"]
-
-                    st.warning(
-                        "This contestant is no longer available."
-                    )
-
-        else:
-
-            st.warning(
-                "No approved contestants to vote for yet."
-            )
-
-
-# ============================================================
-# SUBMIT
-# ============================================================
-with menu[2]:
-
-    st.subheader("Submit Your Talent to NEXERA")
-
-    with st.form(
-        "submission_form",
-        clear_on_submit=True
+    if st.button(
+        "Register Now",
+        use_container_width=True
     ):
+        st.info(
+            "Select **Register** from the menu to begin."
+        )
+
+    st.markdown("---")
+
+    st.markdown(
+        f"""
+        ### Join our WhatsApp channel
+
+        Stay updated with NEXERA announcements,
+        contestant information and voting updates.
+
+        [Join NEXERA WhatsApp Channel]({CHANNEL_LINK})
+        """
+    )
+
+
+# ============================================================
+# REGISTRATION
+# ============================================================
+
+elif page == "Register":
+
+    st.title("NEXERA Registration")
+
+    st.write(
+        "Registration is open. Fill in your details carefully."
+    )
+
+    st.info(
+        "Your application will be reviewed before it appears "
+        "on the voting page."
+    )
+
+    with st.form("registration_form"):
 
         name = st.text_input(
             "Full Name *"
@@ -684,572 +583,701 @@ with menu[2]:
             "Phone Number *"
         )
 
-        talent = st.selectbox(
-            "Talent/Category *",
-            ["Select..."] + CATEGORIES
-        )
-
-        state = st.selectbox(
-            "State *",
-            ["Select..."] + NIGERIA_STATES
-        )
-
-        location = st.text_input(
-            "City/Location where NEXERA can accept you *"
+        talent = st.text_input(
+            "Talent / Business / Skill *"
         )
 
         bank = st.text_input(
-            "Bank Account Details *"
+            "Bank Account / Bank Name *"
+        )
+
+        state = st.text_input(
+            "State *"
+        )
+
+        location = st.text_input(
+            "Location / City *"
         )
 
         reason = st.text_area(
-            "Why do you need NEXERA capital? "
-            "What will you use it for? *",
+            "Why should NEXERA support you? *",
             height=150
         )
 
+        st.markdown("### Upload Your Photo")
+
         photo = st.file_uploader(
             "Upload Clear Photo *",
-            type=["png", "jpg", "jpeg"]
+            type=[
+                "png",
+                "jpg",
+                "jpeg",
+                "webp",
+                "gif",
+                "bmp",
+                "tif",
+                "tiff",
+                "heic",
+                "heif"
+            ],
+            help=(
+                "Large images are accepted. "
+                "After selecting your image, wait until the "
+                "upload finishes before submitting."
+            )
         )
 
-        submit = st.form_submit_button(
-            "SUBMIT NOW"
+        submitted = st.form_submit_button(
+            "Submit Registration",
+            use_container_width=True
         )
 
-        if submit:
+        if submitted:
 
-            if (
-                name
-                and phone
-                and talent != "Select..."
-                and state != "Select..."
-                and location
-                and bank
-                and reason
-                and photo
-            ):
+            if not name.strip():
+                st.error("Please enter your full name.")
 
-                timestamp = datetime.now().strftime(
-                    "%Y%m%d%H%M%S%f"
-                )
+            elif not phone.strip():
+                st.error("Please enter your phone number.")
 
-                safe_filename = os.path.basename(
-                    photo.name
-                )
+            elif not talent.strip():
+                st.error("Please enter your talent or business.")
 
-                filepath = os.path.join(
-                    UPLOAD_DIR,
-                    f"{timestamp}_{safe_filename}"
-                )
+            elif not bank.strip():
+                st.error("Please enter your bank information.")
 
-                with open(
-                    filepath,
-                    "wb"
-                ) as f:
+            elif not state.strip():
+                st.error("Please enter your state.")
 
-                    f.write(
-                        photo.getbuffer()
-                    )
+            elif not location.strip():
+                st.error("Please enter your location.")
 
-                conn = get_connection()
-                c = conn.cursor()
+            elif not reason.strip():
+                st.error("Please explain why you should be supported.")
 
-                c.execute(
-                    """
-                    INSERT INTO submissions
-                    (
-                        name,
-                        phone,
-                        talent,
-                        bank,
-                        photo,
-                        reason,
-                        state,
-                        location,
-                        status,
-                        created_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        name,
-                        phone,
-                        talent,
-                        bank,
-                        filepath,
-                        reason,
-                        state,
-                        location,
-                        "pending",
-                        datetime.now().isoformat()
-                    )
-                )
-
-                conn.commit()
-                conn.close()
-
-                st.success(
-                    "✅ Submission received! "
-                    "Awaiting admin approval."
-                )
+            elif photo is None:
+                st.error("Please upload your photo.")
 
             else:
 
-                st.error(
-                    "❌ Please fill all * fields "
-                    "and select State + Category"
-                )
+                with st.spinner(
+                    "Processing your image and submitting your application..."
+                ):
+
+                    filepath = save_uploaded_image(
+                        photo,
+                        UPLOAD_DIR,
+                        "contestant"
+                    )
+
+                if filepath:
+
+                    conn = get_connection()
+                    c = conn.cursor()
+
+                    c.execute(
+                        """
+                        INSERT INTO submissions
+                        (
+                            name,
+                            phone,
+                            talent,
+                            bank,
+                            photo,
+                            reason,
+                            state,
+                            location,
+                            status,
+                            created_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            name.strip(),
+                            phone.strip(),
+                            talent.strip(),
+                            bank.strip(),
+                            filepath,
+                            reason.strip(),
+                            state.strip(),
+                            location.strip(),
+                            "pending",
+                            datetime.now().isoformat()
+                        )
+                    )
+
+                    conn.commit()
+                    conn.close()
+
+                    st.success(
+                        "✅ Registration submitted successfully!"
+                    )
+
+                    st.info(
+                        "Your application is now awaiting approval."
+                    )
+
+                    st.balloons()
 
 
 # ============================================================
-# ABOUT
+# VOTE
 # ============================================================
-with menu[3]:
 
-    st.subheader("About NEXERA")
+elif page == "Vote":
 
-    st.write(
-        "**NEXERA is a community-driven talent "
-        "and SME funding platform.**"
-    )
+    st.title("NEXERA Voting")
 
-    st.write(
-        "We believe every Nigerian with talent "
-        "or a small business deserves a chance to grow."
-    )
+    if not voting_is_active():
 
-    st.write(
-        f"**How it works:** Talented people submit. "
-        f"The community votes with ₦{VOTE_PRICE}. "
-        "100% of vote money goes directly to contestants. "
-        "Top 3 winners get ₦120k, ₦70k, ₦30k."
-    )
+        st.warning(
+            "Voting is currently closed."
+        )
 
-    st.write(
-        "**Our mission:** To fund 1000 SMEs and "
-        "Talents by 2027."
+        start = get_setting("voting_start")
+        end = get_setting("voting_end")
+
+        if start:
+            st.write(
+                f"Voting starts: **{start}**"
+            )
+
+        if end:
+            st.write(
+                f"Voting ends: **{end}**"
+            )
+
+        st.stop()
+
+    st.success(
+        f"🟢 Voting is OPEN — Each vote costs ₦{VOTE_PRICE}"
     )
 
     st.markdown(
-        f"**Join our community:** {CHANNEL_LINK}"
+        f"""
+        ### Voting Account
+
+        **Bank:** {VOTING_ACCOUNT['Bank']}
+
+        **Account Name:** {VOTING_ACCOUNT['Account Name']}
+
+        **Account Number:** {VOTING_ACCOUNT['Account No']}
+
+        **Cost per vote:** ₦{VOTE_PRICE}
+        """
+    )
+
+    st.markdown("---")
+
+    contestants = get_contestants("approved")
+
+    if contestants.empty:
+
+        st.info(
+            "No approved contestants are available yet."
+        )
+
+    else:
+
+        for _, row in contestants.iterrows():
+
+            st.markdown(
+                '<div class="contestant-card">',
+                unsafe_allow_html=True
+            )
+
+            col1, col2 = st.columns([1, 2])
+
+            with col1:
+
+                if row["photo"] and os.path.exists(row["photo"]):
+                    st.image(
+                        row["photo"],
+                        use_container_width=True
+                    )
+
+            with col2:
+
+                st.subheader(
+                    row["name"]
+                )
+
+                st.write(
+                    f"**Talent:** {row['talent']}"
+                )
+
+                st.write(
+                    f"**Location:** {row['location']}, {row['state']}"
+                )
+
+                st.markdown(
+                    f"""
+                    <div class="vote-count">
+                    Votes: {int(row['votes'])}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                st.write(
+                    row["reason"]
+                )
+
+                with st.expander(
+                    f"Vote for {row['name']}"
+                ):
+
+                    with st.form(
+                        f"vote_form_{row['id']}"
+                    ):
+
+                        voter_name = st.text_input(
+                            "Your Name"
+                        )
+
+                        voter_phone = st.text_input(
+                            "Your Phone Number"
+                        )
+
+                        st.write(
+                            f"Send ₦{VOTE_PRICE} to:"
+                        )
+
+                        st.code(
+                            VOTING_ACCOUNT["Account No"]
+                        )
+
+                        st.write(
+                            VOTING_ACCOUNT["Bank"]
+                        )
+
+                        st.write(
+                            VOTING_ACCOUNT["Account Name"]
+                        )
+
+                        proof = st.file_uploader(
+                            "Upload Payment Screenshot *",
+                            type=[
+                                "png",
+                                "jpg",
+                                "jpeg",
+                                "webp",
+                                "gif",
+                                "bmp",
+                                "tif",
+                                "tiff",
+                                "heic",
+                                "heif"
+                            ],
+                            key=f"proof_{row['id']}"
+                        )
+
+                        vote_submit = st.form_submit_button(
+                            "Submit Vote",
+                            use_container_width=True
+                        )
+
+                        if vote_submit:
+
+                            if not voter_name.strip():
+                                st.error(
+                                    "Enter your name."
+                                )
+
+                            elif not voter_phone.strip():
+                                st.error(
+                                    "Enter your phone number."
+                                )
+
+                            elif proof is None:
+                                st.error(
+                                    "Upload your payment proof."
+                                )
+
+                            else:
+
+                                with st.spinner(
+                                    "Processing payment proof..."
+                                ):
+
+                                    proofpath = save_uploaded_image(
+                                        proof,
+                                        PROOF_DIR,
+                                        "proof"
+                                    )
+
+                                if proofpath:
+
+                                    conn = get_connection()
+                                    c = conn.cursor()
+
+                                    c.execute(
+                                        """
+                                        INSERT INTO votes
+                                        (
+                                            contestant_id,
+                                            voter_name,
+                                            voter_phone,
+                                            proof,
+                                            status,
+                                            created_at
+                                        )
+                                        VALUES (?, ?, ?, ?, ?, ?)
+                                        """,
+                                        (
+                                            int(row["id"]),
+                                            voter_name.strip(),
+                                            voter_phone.strip(),
+                                            proofpath,
+                                            "pending",
+                                            datetime.now().isoformat()
+                                        )
+                                    )
+
+                                    conn.commit()
+                                    conn.close()
+
+                                    st.success(
+                                        "✅ Vote submitted successfully!"
+                                    )
+
+                                    st.info(
+                                        "Your payment proof is awaiting "
+                                        "verification by NEXERA."
+                                    )
+
+            st.markdown(
+                "</div>",
+                unsafe_allow_html=True
+            )
+
+
+# ============================================================
+# SUPPORT
+# ============================================================
+
+elif page == "Support":
+
+    st.title("NEXERA Support")
+
+    st.write(
+        "Need help with registration, voting or your application?"
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        st.subheader("Email Support")
+
+        st.write(
+            SUPPORT_EMAIL
+        )
+
+        st.markdown(
+            f"[Send us an email](mailto:{SUPPORT_EMAIL})"
+        )
+
+    with col2:
+
+        st.subheader("WhatsApp Support")
+
+        st.write(
+            SUPPORT_WHATSAPP
+        )
+
+        st.markdown(
+            f"[Chat with NEXERA Support](https://wa.me/234{SUPPORT_WHATSAPP[1:]})"
+        )
+
+    st.markdown("---")
+
+    st.subheader("Voting Payment Details")
+
+    st.write(
+        f"**Bank:** {VOTING_ACCOUNT['Bank']}"
+    )
+
+    st.write(
+        f"**Account Name:** {VOTING_ACCOUNT['Account Name']}"
+    )
+
+    st.write(
+        f"**Account Number:** {VOTING_ACCOUNT['Account No']}"
+    )
+
+    st.write(
+        f"**Cost:** ₦{VOTE_PRICE} per vote"
     )
 
 
 # ============================================================
 # ADMIN
 # ============================================================
-with menu[4]:
+
+elif page == "Admin":
+
+    st.title("NEXERA Admin Panel")
 
     password = st.text_input(
-        "Enter Admin Password",
+        "Admin Password",
         type="password"
     )
 
-    if password == ADMIN_PASSWORD:
+    if password != ADMIN_PASSWORD:
 
-        st.subheader("Admin Dashboard")
+        st.info(
+            "Enter the admin password to continue."
+        )
 
-        # ========== DASHBOARD STATISTICS ==========
+        st.stop()
+
+    st.success(
+        "Admin access granted."
+    )
+
+    admin_menu = st.radio(
+        "Admin Section",
+        [
+            "Dashboard",
+            "Contestants",
+            "Payment Proofs",
+            "Voting Controls"
+        ]
+    )
+
+    # --------------------------------------------------------
+    # DASHBOARD
+    # --------------------------------------------------------
+
+    if admin_menu == "Dashboard":
+
+        all_contestants = get_contestants()
+
+        pending_count = len(
+            all_contestants[
+                all_contestants["status"] == "pending"
+            ]
+        )
+
+        approved_count = len(
+            all_contestants[
+                all_contestants["status"] == "approved"
+            ]
+        )
+
         conn = get_connection()
 
-        total_submissions = pd.read_sql(
-            """
-            SELECT COUNT(*) AS c
-            FROM submissions
-            """,
+        votes_df = pd.read_sql_query(
+            "SELECT * FROM votes",
             conn
-        ).iloc[0]["c"]
-
-        total_approved = pd.read_sql(
-            """
-            SELECT COUNT(*) AS c
-            FROM submissions
-            WHERE status = 'approved'
-            """,
-            conn
-        ).iloc[0]["c"]
-
-        total_votes = pd.read_sql(
-            """
-            SELECT COUNT(*) AS c
-            FROM votes
-            WHERE status = 'approved'
-            """,
-            conn
-        ).iloc[0]["c"]
-
-        funds_raised = total_votes * VOTE_PRICE
+        )
 
         conn.close()
+
+        pending_votes = len(
+            votes_df[
+                votes_df["status"] == "pending"
+            ]
+        ) if not votes_df.empty else 0
+
+        approved_votes = len(
+            votes_df[
+                votes_df["status"] == "approved"
+            ]
+        ) if not votes_df.empty else 0
 
         col1, col2, col3, col4 = st.columns(4)
 
-        col1.metric(
-            "Total Submissions",
-            int(total_submissions)
-        )
-
-        col2.metric(
-            "Approved Contestants",
-            int(total_approved)
-        )
-
-        col3.metric(
-            "Total Voters",
-            int(total_votes)
-        )
-
-        col4.metric(
-            "Funds Raised",
-            f"₦{int(funds_raised):,}"
-        )
-
-
-        # ====================================================
-        # VOTING CONTROLS
-        # ====================================================
-        st.markdown("---")
-
-        st.subheader("Voting Controls")
-
-        voting_active = (
-            get_setting("voting_active") == "1"
-        )
-
-        if st.button(
-            "TURN ON VOTING"
-            if not voting_active
-            else "TURN OFF VOTING"
-        ):
-
-            new_status = (
-                "0"
-                if voting_active
-                else "1"
+        with col1:
+            st.metric(
+                "Total Contestants",
+                len(all_contestants)
             )
 
-            set_setting(
-                "voting_active",
-                new_status
+        with col2:
+            st.metric(
+                "Pending Contestants",
+                pending_count
             )
 
-            if new_status == "1":
+        with col3:
+            st.metric(
+                "Approved Contestants",
+                approved_count
+            )
 
-                set_setting(
-                    "voting_start",
-                    datetime.now().isoformat()
-                )
+        with col4:
+            st.metric(
+                "Pending Payments",
+                pending_votes
+            )
 
-                set_setting(
-                    "voting_end",
-                    (
-                        datetime.now()
-                        + timedelta(days=7)
-                    ).isoformat()
-                )
-
-            st.rerun()
-
-        st.write(
-            f"Status: "
-            f"{'🟢 ACTIVE' if voting_active else '🔴 INACTIVE'}"
-        )
-
-
-        # ====================================================
-        # APPROVE CONTESTANTS
-        # ====================================================
         st.markdown("---")
 
-        st.subheader("Approve Contestants")
+        st.subheader("Voting Status")
 
-        conn = get_connection()
+        if voting_is_active():
+            st.success("🟢 Voting is ACTIVE")
+        else:
+            st.error("🔴 Voting is CLOSED")
 
-        df_sub = pd.read_sql(
-            """
-            SELECT *
-            FROM submissions
-            WHERE status = 'pending'
-            ORDER BY id DESC
-            """,
-            conn
-        )
+        if not votes_df.empty:
 
-        conn.close()
+            st.subheader("Vote Summary")
 
-        if not df_sub.empty:
+            st.write(
+                f"Approved payments: {approved_votes}"
+            )
 
-            for i, row in df_sub.iterrows():
+            st.write(
+                f"Pending payments: {pending_votes}"
+            )
 
-                st.markdown(
-                    '<div class="contestant-card">',
-                    unsafe_allow_html=True
-                )
 
-                if (
-                    row["photo"]
-                    and os.path.exists(row["photo"])
-                ):
+    # --------------------------------------------------------
+    # CONTESTANTS
+    # --------------------------------------------------------
 
-                    st.image(
-                        row["photo"],
-                        width=200
-                    )
+    elif admin_menu == "Contestants":
 
-                st.write(
-                    f"**{row['name']}** - "
-                    f"{row['talent']} - "
-                    f"{row['state']}"
-                )
+        st.subheader("Contestant Management")
 
-                st.write(
-                    f"**Phone:** {row['phone']} | "
-                    f"**Bank:** {row['bank']}"
-                )
+        contestants = get_contestants()
 
-                st.write(
-                    f"**Location:** {row['location']}"
-                )
+        if contestants.empty:
 
-                st.write(
-                    f"**Reason:** {row['reason']}"
-                )
-
-                col1, col2 = st.columns(2)
-
-                with col1:
-
-                    if st.button(
-                        "Approve",
-                        key=f"approve_{row['id']}"
-                    ):
-
-                        conn = get_connection()
-                        c = conn.cursor()
-
-                        c.execute(
-                            """
-                            UPDATE submissions
-                            SET status = 'approved'
-                            WHERE id = ?
-                            """,
-                            (int(row["id"]),)
-                        )
-
-                        conn.commit()
-                        conn.close()
-
-                        st.success(
-                            f"{row['name']} approved!"
-                        )
-
-                        st.rerun()
-
-                with col2:
-
-                    if st.button(
-                        "Remove",
-                        key=f"remove_pending_{row['id']}"
-                    ):
-
-                        conn = get_connection()
-                        c = conn.cursor()
-
-                        c.execute(
-                            """
-                            DELETE FROM votes
-                            WHERE contestant_id = ?
-                            """,
-                            (int(row["id"]),)
-                        )
-
-                        c.execute(
-                            """
-                            DELETE FROM submissions
-                            WHERE id = ?
-                            """,
-                            (int(row["id"]),)
-                        )
-
-                        conn.commit()
-                        conn.close()
-
-                        try:
-
-                            if (
-                                row["photo"]
-                                and os.path.exists(row["photo"])
-                            ):
-
-                                os.remove(
-                                    row["photo"]
-                                )
-
-                        except Exception:
-                            pass
-
-                        st.success(
-                            f"{row['name']} removed."
-                        )
-
-                        st.rerun()
-
-                st.markdown(
-                    '</div>',
-                    unsafe_allow_html=True
-                )
+            st.info(
+                "No contestants found."
+            )
 
         else:
 
-            st.info(
-                "No pending submissions"
-            )
+            for _, row in contestants.iterrows():
 
+                with st.expander(
+                    f"{row['name']} — {row['status'].upper()}"
+                ):
 
-        # ====================================================
-        # MANAGE APPROVED CONTESTANTS
-        # ====================================================
-        st.markdown("---")
+                    col1, col2 = st.columns([1, 2])
 
-        st.subheader(
-            "👥 Manage Approved Contestants"
-        )
+                    with col1:
 
-        st.write(
-            "Admins can manually update a contestant's "
-            "vote score or remove a contestant."
-        )
+                        if (
+                            row["photo"]
+                            and os.path.exists(row["photo"])
+                        ):
+                            st.image(
+                                row["photo"],
+                                width=220
+                            )
 
-        conn = get_connection()
+                    with col2:
 
-        approved_df = pd.read_sql(
-            """
-            SELECT *
-            FROM submissions
-            WHERE status = 'approved'
-            ORDER BY votes DESC, id ASC
-            """,
-            conn
-        )
-
-        conn.close()
-
-        if not approved_df.empty:
-
-            for i, row in approved_df.iterrows():
-
-                st.markdown(
-                    '<div class="contestant-card">',
-                    unsafe_allow_html=True
-                )
-
-                col1, col2 = st.columns(
-                    [1, 2]
-                )
-
-                with col1:
-
-                    if (
-                        row["photo"]
-                        and os.path.exists(row["photo"])
-                    ):
-
-                        st.image(
-                            row["photo"],
-                            width=220
+                        st.write(
+                            f"**Name:** {row['name']}"
                         )
 
-                with col2:
+                        st.write(
+                            f"**Phone:** {row['phone']}"
+                        )
 
-                    st.write(
-                        f"### {row['name']}"
-                    )
+                        st.write(
+                            f"**Talent:** {row['talent']}"
+                        )
 
-                    st.write(
-                        f"**Category:** {row['talent']}"
-                    )
+                        st.write(
+                            f"**Bank:** {row['bank']}"
+                        )
 
-                    st.write(
-                        f"**State:** {row['state']}"
-                    )
+                        st.write(
+                            f"**Location:** "
+                            f"{row['location']}, {row['state']}"
+                        )
 
-                    st.write(
-                        f"**Location:** {row['location']}"
-                    )
+                        st.write(
+                            f"**Reason:** {row['reason']}"
+                        )
 
-                    st.write(
-                        f"**Reason:** {row['reason']}"
-                    )
+                        st.write(
+                            f"**Current Votes:** {row['votes']}"
+                        )
 
-                    st.write(
-                        f"**Current Verified Votes:** "
-                        f"{int(row['votes'])}"
-                    )
+                    st.markdown("---")
 
-                    new_score = st.number_input(
-                        "Update Vote Score",
-                        min_value=0,
-                        value=int(row["votes"]),
-                        step=1,
-                        key=f"score_{row['id']}"
-                    )
-
-                    col_a, col_b = st.columns(2)
+                    col_a, col_b, col_c = st.columns(3)
 
                     with col_a:
 
-                        if st.button(
-                            "💾 UPDATE SCORE",
-                            key=f"update_score_{row['id']}"
-                        ):
+                        if row["status"] == "pending":
 
-                            conn = get_connection()
-                            c = conn.cursor()
+                            if st.button(
+                                "Approve",
+                                key=f"approve_{row['id']}"
+                            ):
 
-                            c.execute(
-                                """
-                                UPDATE submissions
-                                SET votes = ?
-                                WHERE id = ?
-                                """,
-                                (
-                                    int(new_score),
-                                    int(row["id"])
+                                conn = get_connection()
+                                c = conn.cursor()
+
+                                c.execute(
+                                    """
+                                    UPDATE submissions
+                                    SET status = 'approved'
+                                    WHERE id = ?
+                                    """,
+                                    (int(row["id"]),)
                                 )
-                            )
 
-                            conn.commit()
-                            conn.close()
+                                conn.commit()
+                                conn.close()
 
-                            st.success(
-                                f"Score for {row['name']} "
-                                f"updated to {int(new_score)}."
-                            )
+                                st.success(
+                                    "Contestant approved."
+                                )
 
-                            st.rerun()
+                                st.rerun()
 
                     with col_b:
 
+                        if row["status"] == "pending":
+
+                            if st.button(
+                                "Reject",
+                                key=f"reject_{row['id']}"
+                            ):
+
+                                conn = get_connection()
+                                c = conn.cursor()
+
+                                c.execute(
+                                    """
+                                    UPDATE submissions
+                                    SET status = 'rejected'
+                                    WHERE id = ?
+                                    """,
+                                    (int(row["id"]),)
+                                )
+
+                                conn.commit()
+                                conn.close()
+
+                                st.warning(
+                                    "Contestant rejected."
+                                )
+
+                                st.rerun()
+
+                    with col_c:
+
                         if st.button(
-                            "🗑️ REMOVE CONTESTANT",
-                            key=f"remove_approved_{row['id']}"
+                            "Remove Contestant",
+                            key=f"remove_{row['id']}"
                         ):
 
                             conn = get_connection()
                             c = conn.cursor()
 
-                            c.execute(
-                                """
-                                SELECT proof
-                                FROM votes
-                                WHERE contestant_id = ?
-                                """,
-                                (int(row["id"]),)
-                            )
-
-                            proof_files = c.fetchall()
-
+                            # Remove associated votes
                             c.execute(
                                 """
                                 DELETE FROM votes
@@ -1258,6 +1286,7 @@ with menu[4]:
                                 (int(row["id"]),)
                             )
 
+                            # Remove contestant
                             c.execute(
                                 """
                                 DELETE FROM submissions
@@ -1269,137 +1298,37 @@ with menu[4]:
                             conn.commit()
                             conn.close()
 
+                            # Remove contestant photo
                             try:
-
                                 if (
                                     row["photo"]
                                     and os.path.exists(row["photo"])
                                 ):
-
-                                    os.remove(
-                                        row["photo"]
-                                    )
-
+                                    os.remove(row["photo"])
                             except Exception:
                                 pass
 
-                            for proof_row in proof_files:
-
-                                proof_file = proof_row[0]
-
-                                try:
-
-                                    if (
-                                        proof_file
-                                        and os.path.exists(
-                                            proof_file
-                                        )
-                                    ):
-
-                                        os.remove(
-                                            proof_file
-                                        )
-
-                                except Exception:
-                                    pass
-
-                            if (
-                                "voting_for"
-                                in st.session_state
-                                and st.session_state[
-                                    "voting_for"
-                                ] == int(row["id"])
-                            ):
-
-                                del st.session_state[
-                                    "voting_for"
-                                ]
-
                             st.success(
-                                f"{row['name']} has been removed."
+                                "Contestant removed."
                             )
 
                             st.rerun()
 
-                st.markdown(
-                    '</div>',
-                    unsafe_allow_html=True
-                )
+                    st.markdown("---")
 
-        else:
+                    st.write("### Manually Update Vote Score")
 
-            st.info(
-                "No approved contestants yet."
-            )
-
-
-        # ====================================================
-        # APPROVE VOTES
-        # ====================================================
-        st.markdown("---")
-
-        st.subheader(
-            "Approve Votes / Proof of Payment"
-        )
-
-        conn = get_connection()
-
-        df_votes = pd.read_sql(
-            """
-            SELECT
-                v.*,
-                s.name AS contestant_name
-            FROM votes v
-            JOIN submissions s
-                ON v.contestant_id = s.id
-            WHERE v.status = 'pending'
-            ORDER BY v.id DESC
-            """,
-            conn
-        )
-
-        conn.close()
-
-        if not df_votes.empty:
-
-            for i, row in df_votes.iterrows():
-
-                st.markdown(
-                    '<div class="contestant-card">',
-                    unsafe_allow_html=True
-                )
-
-                st.write(
-                    f"**{row['voter_name']}** "
-                    f"voted for "
-                    f"**{row['contestant_name']}**"
-                )
-
-                st.write(
-                    f"**Phone:** {row['voter_phone']}"
-                )
-
-                st.write(
-                    f"**Submitted:** {row['created_at']}"
-                )
-
-                if (
-                    row["proof"]
-                    and os.path.exists(row["proof"])
-                ):
-
-                    st.image(
-                        row["proof"],
-                        width=300
+                    new_score = st.number_input(
+                        "Update Vote Score",
+                        min_value=0,
+                        value=int(row["votes"]),
+                        step=1,
+                        key=f"score_{row['id']}"
                     )
 
-                col1, col2 = st.columns(2)
-
-                with col1:
-
                     if st.button(
-                        "✅ Approve Vote",
-                        key=f"approve_vote_{row['id']}"
+                        "Save Vote Score",
+                        key=f"save_score_{row['id']}"
                     ):
 
                         conn = get_connection()
@@ -1407,160 +1336,297 @@ with menu[4]:
 
                         c.execute(
                             """
-                            SELECT status
-                            FROM votes
+                            UPDATE submissions
+                            SET votes = ?
                             WHERE id = ?
                             """,
-                            (int(row["id"]),)
-                        )
-
-                        current_vote = c.fetchone()
-
-                        if (
-                            current_vote
-                            and current_vote[0] == "pending"
-                        ):
-
-                            c.execute(
-                                """
-                                SELECT id
-                                FROM submissions
-                                WHERE id = ?
-                                AND status = 'approved'
-                                """,
-                                (int(row["contestant_id"]),)
+                            (
+                                int(new_score),
+                                int(row["id"])
                             )
-
-                            contestant_exists = c.fetchone()
-
-                            if contestant_exists:
-
-                                c.execute(
-                                    """
-                                    UPDATE votes
-                                    SET status = 'approved'
-                                    WHERE id = ?
-                                    """,
-                                    (int(row["id"]),)
-                                )
-
-                                c.execute(
-                                    """
-                                    UPDATE submissions
-                                    SET votes = votes + 1
-                                    WHERE id = ?
-                                    """,
-                                    (
-                                        int(
-                                            row["contestant_id"]
-                                        ),
-                                    )
-                                )
-
-                                conn.commit()
-
-                                st.success(
-                                    "Vote Approved!"
-                                )
-
-                            else:
-
-                                c.execute(
-                                    """
-                                    DELETE FROM votes
-                                    WHERE id = ?
-                                    """,
-                                    (int(row["id"]),)
-                                )
-
-                                conn.commit()
-
-                                st.warning(
-                                    "The contestant no longer "
-                                    "exists. The pending vote "
-                                    "was removed."
-                                )
-
-                        conn.close()
-
-                        st.rerun()
-
-                with col2:
-
-                    if st.button(
-                        "❌ Reject Vote",
-                        key=f"reject_vote_{row['id']}"
-                    ):
-
-                        conn = get_connection()
-                        c = conn.cursor()
-
-                        c.execute(
-                            """
-                            UPDATE votes
-                            SET status = 'rejected'
-                            WHERE id = ?
-                            """,
-                            (int(row["id"]),)
                         )
 
                         conn.commit()
                         conn.close()
 
                         st.success(
-                            "Vote rejected."
+                            "Vote score updated."
                         )
 
                         st.rerun()
 
-                st.markdown(
-                    '</div>',
-                    unsafe_allow_html=True
-                )
+
+    # --------------------------------------------------------
+    # PAYMENT PROOFS
+    # --------------------------------------------------------
+
+    elif admin_menu == "Payment Proofs":
+
+        st.subheader("Payment Proof Verification")
+
+        conn = get_connection()
+
+        votes_df = pd.read_sql_query(
+            """
+            SELECT
+                votes.*,
+                submissions.name AS contestant_name
+            FROM votes
+            LEFT JOIN submissions
+            ON votes.contestant_id = submissions.id
+            ORDER BY votes.id DESC
+            """,
+            conn
+        )
+
+        conn.close()
+
+        if votes_df.empty:
+
+            st.info(
+                "No payment proofs submitted."
+            )
 
         else:
 
-            st.info(
-                "No pending votes"
+            for _, vote in votes_df.iterrows():
+
+                with st.expander(
+                    f"Vote #{vote['id']} — "
+                    f"{vote['contestant_name']}"
+                ):
+
+                    st.write(
+                        f"**Voter:** {vote['voter_name']}"
+                    )
+
+                    st.write(
+                        f"**Voter Phone:** {vote['voter_phone']}"
+                    )
+
+                    st.write(
+                        f"**Contestant:** "
+                        f"{vote['contestant_name']}"
+                    )
+
+                    st.write(
+                        f"**Status:** {vote['status']}"
+                    )
+
+                    if (
+                        vote["proof"]
+                        and os.path.exists(vote["proof"])
+                    ):
+
+                        st.image(
+                            vote["proof"],
+                            width=300
+                        )
+
+                    st.markdown("---")
+
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+
+                        if vote["status"] == "pending":
+
+                            if st.button(
+                                "Approve Payment",
+                                key=f"approve_vote_{vote['id']}"
+                            ):
+
+                                conn = get_connection()
+                                c = conn.cursor()
+
+                                # Check contestant still exists
+                                c.execute(
+                                    """
+                                    SELECT id, status
+                                    FROM submissions
+                                    WHERE id = ?
+                                    """,
+                                    (
+                                        int(vote["contestant_id"]),
+                                    )
+                                )
+
+                                contestant = c.fetchone()
+
+                                if contestant:
+
+                                    c.execute(
+                                        """
+                                        UPDATE votes
+                                        SET status = 'approved'
+                                        WHERE id = ?
+                                        """,
+                                        (int(vote["id"]),)
+                                    )
+
+                                    c.execute(
+                                        """
+                                        UPDATE submissions
+                                        SET votes = votes + 1
+                                        WHERE id = ?
+                                        """,
+                                        (
+                                            int(vote["contestant_id"]),
+                                        )
+                                    )
+
+                                    conn.commit()
+
+                                    st.success(
+                                        "Payment approved and vote added."
+                                    )
+
+                                else:
+
+                                    st.error(
+                                        "Contestant no longer exists."
+                                    )
+
+                                conn.close()
+
+                                st.rerun()
+
+                    with col2:
+
+                        if vote["status"] == "pending":
+
+                            if st.button(
+                                "Reject Payment",
+                                key=f"reject_vote_{vote['id']}"
+                            ):
+
+                                conn = get_connection()
+                                c = conn.cursor()
+
+                                c.execute(
+                                    """
+                                    UPDATE votes
+                                    SET status = 'rejected'
+                                    WHERE id = ?
+                                    """,
+                                    (int(vote["id"]),)
+                                )
+
+                                conn.commit()
+                                conn.close()
+
+                                st.warning(
+                                    "Payment rejected."
+                                )
+
+                                st.rerun()
+
+
+    # --------------------------------------------------------
+    # VOTING CONTROLS
+    # --------------------------------------------------------
+
+    elif admin_menu == "Voting Controls":
+
+        st.subheader("Voting Controls")
+
+        current_status = voting_is_active()
+
+        if current_status:
+            st.success(
+                "🟢 Voting is currently ACTIVE"
+            )
+        else:
+            st.warning(
+                "🔴 Voting is currently CLOSED"
             )
 
-    elif password:
+        st.markdown("---")
 
-        st.error(
-            "Wrong password"
+        st.write(
+            "Start a new 7-day voting period."
         )
 
+        if st.button(
+            "START VOTING",
+            use_container_width=True
+        ):
+
+            start_time = datetime.now()
+            end_time = start_time + timedelta(days=7)
+
+            set_setting(
+                "voting_active",
+                "1"
+            )
+
+            set_setting(
+                "voting_start",
+                start_time.isoformat()
+            )
+
+            set_setting(
+                "voting_end",
+                end_time.isoformat()
+            )
+
+            st.success(
+                "🟢 Voting has started!"
+            )
+
+            st.write(
+                f"Start: {start_time}"
+            )
+
+            st.write(
+                f"End: {end_time}"
+            )
+
+            st.rerun()
+
+        st.markdown("---")
+
+        if st.button(
+            "STOP VOTING",
+            use_container_width=True
+        ):
+
+            set_setting(
+                "voting_active",
+                "0"
+            )
+
+            st.warning(
+                "🔴 Voting has been stopped."
+            )
+
+            st.rerun()
+
+        st.markdown("---")
+
+        start = get_setting("voting_start")
+        end = get_setting("voting_end")
+
+        if start:
+            st.write(
+                f"**Voting Started:** {start}"
+            )
+
+        if end:
+            st.write(
+                f"**Voting Ends:** {end}"
+            )
+
 
 # ============================================================
-# SUPPORT
+# FOOTER
 # ============================================================
+
 st.markdown("---")
 
-st.write("### NEXERA Support")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.write(
-        f"**Email:** {SUPPORT_EMAIL}"
-    )
-
-with col2:
-    st.write(
-        f"**WhatsApp:** {SUPPORT_WHATSAPP}"
-    )
-
-st.write(
-    f"**Channel:** {CHANNEL_LINK}"
+st.caption(
+    "© 2026 NEXERA — Your Next Era"
 )
-
-st.write(
-    "© 2026 NEXERA. Your Next Era Starts Now."
-)
-
-
-
-
 
 
 
