@@ -10,10 +10,11 @@ UPLOAD_DIR = "uploads"
 PROOF_DIR = "proofs"
 CHANNEL_LINK = "https://whatsapp.com/channel/0029VbDJzRsGpLHMGlw2at0n"
 
+# VOTING PAYMENT ACCOUNT
 VOTING_ACCOUNT = {
     "Bank": "OPAY",
     "Account Name": "NEXERA SUPPORT",
-    "Account No": "9123456789"
+    "Account No": "9018479293"
 }
 
 VOTE_PRICE = 200
@@ -119,10 +120,6 @@ def get_connection():
 def init_db():
     conn = get_connection()
     c = conn.cursor()
-
-    # IMPORTANT:
-    # This keeps the existing database structure and also makes sure
-    # older databases continue working.
 
     c.execute("""
         CREATE TABLE IF NOT EXISTS submissions (
@@ -475,6 +472,7 @@ with menu[1]:
                                 "VOTE NOW",
                                 key=f"vote_btn_{row['id']}"
                             ):
+
                                 st.session_state[
                                     "voting_for"
                                 ] = int(row["id"])
@@ -515,6 +513,7 @@ with menu[1]:
                             f"Vote for {contestant['name']}"
                         )
 
+                        # PAYMENT DETAILS SHOWN TO VOTERS
                         st.markdown(
                             f"""
                             <div class="account-box">
@@ -590,6 +589,7 @@ with menu[1]:
                                     proofpath,
                                     "wb"
                                 ) as f:
+
                                     f.write(
                                         proof.getbuffer()
                                     )
@@ -730,13 +730,6 @@ with menu[2]:
                 and photo
             ):
 
-                # FIX:
-                # The original code had 10 database columns
-                # but only 6 ? placeholders.
-                #
-                # It now correctly uses 10 placeholders
-                # for all 10 submitted values.
-
                 timestamp = datetime.now().strftime(
                     "%Y%m%d%H%M%S%f"
                 )
@@ -754,6 +747,7 @@ with menu[2]:
                     filepath,
                     "wb"
                 ) as f:
+
                     f.write(
                         photo.getbuffer()
                     )
@@ -997,6 +991,7 @@ with menu[4]:
                     row["photo"]
                     and os.path.exists(row["photo"])
                 ):
+
                     st.image(
                         row["photo"],
                         width=200
@@ -1061,8 +1056,6 @@ with menu[4]:
                         conn = get_connection()
                         c = conn.cursor()
 
-                        # Delete any votes/proofs belonging
-                        # to this contestant first.
                         c.execute(
                             """
                             DELETE FROM votes
@@ -1082,13 +1075,17 @@ with menu[4]:
                         conn.commit()
                         conn.close()
 
-                        # Delete uploaded contestant photo.
                         try:
+
                             if (
                                 row["photo"]
                                 and os.path.exists(row["photo"])
                             ):
-                                os.remove(row["photo"])
+
+                                os.remove(
+                                    row["photo"]
+                                )
+
                         except Exception:
                             pass
 
@@ -1157,6 +1154,7 @@ with menu[4]:
                         row["photo"]
                         and os.path.exists(row["photo"])
                     ):
+
                         st.image(
                             row["photo"],
                             width=220
@@ -1241,8 +1239,6 @@ with menu[4]:
                             conn = get_connection()
                             c = conn.cursor()
 
-                            # Remove all votes associated
-                            # with this contestant.
                             c.execute(
                                 """
                                 SELECT proof
@@ -1273,36 +1269,40 @@ with menu[4]:
                             conn.commit()
                             conn.close()
 
-                            # Delete contestant photo.
                             try:
+
                                 if (
                                     row["photo"]
                                     and os.path.exists(row["photo"])
                                 ):
-                                    os.remove(row["photo"])
+
+                                    os.remove(
+                                        row["photo"]
+                                    )
+
                             except Exception:
                                 pass
 
-                            # Delete payment proof files.
                             for proof_row in proof_files:
 
                                 proof_file = proof_row[0]
 
                                 try:
+
                                     if (
                                         proof_file
                                         and os.path.exists(
                                             proof_file
                                         )
                                     ):
+
                                         os.remove(
                                             proof_file
                                         )
+
                                 except Exception:
                                     pass
 
-                            # If this contestant was selected
-                            # for voting, clear that selection.
                             if (
                                 "voting_for"
                                 in st.session_state
@@ -1310,6 +1310,7 @@ with menu[4]:
                                     "voting_for"
                                 ] == int(row["id"])
                             ):
+
                                 del st.session_state[
                                     "voting_for"
                                 ]
@@ -1379,8 +1380,7 @@ with menu[4]:
                 )
 
                 st.write(
-                    f"**Submitted:** "
-                    f"{row['created_at']}"
+                    f"**Submitted:** {row['created_at']}"
                 )
 
                 if (
@@ -1405,7 +1405,6 @@ with menu[4]:
                         conn = get_connection()
                         c = conn.cursor()
 
-                        # Make sure the vote is still pending.
                         c.execute(
                             """
                             SELECT status
@@ -1422,7 +1421,6 @@ with menu[4]:
                             and current_vote[0] == "pending"
                         ):
 
-                            # Check contestant still exists.
                             c.execute(
                                 """
                                 SELECT id
@@ -1454,9 +1452,7 @@ with menu[4]:
                                     """,
                                     (
                                         int(
-                                            row[
-                                                "contestant_id"
-                                            ]
+                                            row["contestant_id"]
                                         ),
                                     )
                                 )
@@ -1469,7 +1465,6 @@ with menu[4]:
 
                             else:
 
-                                # Contestant was removed.
                                 c.execute(
                                     """
                                     DELETE FROM votes
@@ -1562,7 +1557,6 @@ st.write(
 st.write(
     "© 2026 NEXERA. Your Next Era Starts Now."
 )
-                  
 
 
 
@@ -1773,837 +1767,3 @@ st.write(
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                  
